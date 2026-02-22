@@ -1357,33 +1357,28 @@ elif opcion == "💸 GASTOS":
                 st.warning("⚠️ Complete los campos obligatorios (*)")
 
 # ============================================
-# MÓDULO 4: HISTORIAL CON FILTROS Y EXPORTACIÓN
+# MÓDULO 4: HISTORIAL DE VENTAS (TODOS LOS TURNOS)
 # ============================================
 elif opcion == "📜 HISTORIAL":
-    requiere_turno()
-    requiere_usuario()
-    
-    id_turno = st.session_state.id_turno
-    tasa = st.session_state.get('tasa_dia', 1.0)
+    requiere_usuario()  # Solo requiere usuario, no turno activo
     
     st.markdown("<h1 class='main-header'>📜 Historial de Ventas</h1>", unsafe_allow_html=True)
     st.markdown(f"""
         <div style='background-color: #e7f3ff; padding: 0.8rem; border-radius: 8px; margin-bottom: 1.5rem;'>
-            <span style='font-weight:600;'>📍 Turno #{id_turno}</span> | 
-            <span>💱 Tasa: {tasa:.2f} Bs/$</span> |
-            <span>👤 Usuario: {st.session_state.usuario_actual['nombre']}</span>
+            <span style='font-weight:600;'>👤 Usuario: {st.session_state.usuario_actual['nombre']}</span>
         </div>
     """, unsafe_allow_html=True)
     
     try:
-        # Cargar ventas
+        # ============================================
+        # CARGAR TODAS LAS VENTAS (SIN FILTRAR POR TURNO)
+        # ============================================
         if st.session_state.online_mode:
-            response = db.table("ventas").select("*").eq("id_cierre", id_turno).order("fecha", desc=True).execute()
+            response = db.table("ventas").select("*").order("fecha", desc=True).execute()
             df = pd.DataFrame(response.data) if response.data else pd.DataFrame()
-            OfflineManager.guardar_datos_local(f'ventas_{id_turno}', df.to_dict('records'))
         else:
-            datos_local = OfflineManager.obtener_datos_local(f'ventas_{id_turno}')
-            df = pd.DataFrame(datos_local) if datos_local else pd.DataFrame()
+            st.warning("Modo offline: mostrando datos locales")
+            df = pd.DataFrame()  # En modo offline habría que implementar caché, pero por ahora vacío
         
         if not df.empty:
             # Procesar fechas
@@ -1396,60 +1391,56 @@ elif opcion == "📜 HISTORIAL":
             # FILTROS MEJORADOS
             # ============================================
             st.subheader("🔍 Filtrar ventas")
-            col_filtro1, col_filtro2, col_filtro3, col_filtro4 = st.columns([1.5, 1, 1, 1])
             
-            with col_filtro1:
-                fecha_filtro = st.text_input("📅 Por fecha", placeholder="DD/MM/AAAA", key="filtro_fecha")
+            col_f1, col_f2, col_f3, col_f4 = st.columns(4)
             
-            with col_filtro2:
+            with col_f1:
+                fecha_desde = st.date_input("📅 Desde", value=None, key="hist_desde")
+            with col_f2:
+                fecha_hasta = st.date_input("📅 Hasta", value=None, key="hist_hasta")
+            with col_f3:
+                # Filtro por número de turno
+                turno_filtro = st.number_input("🔢 Número de turno", min_value=0, value=0, step=1, key="filtro_turno")
+            with col_f4:
                 estado_filtro = st.selectbox(
-                    "📌 Estado",
+                    "Estado",
                     ["Todos", "Finalizado", "Anulado"],
                     key="filtro_estado"
                 )
             
-            with col_filtro3:
-                buscar_texto = st.text_input("🔍 Producto", placeholder="Ej: Ron...", key="filtro_buscar")
-            
-            with col_filtro4:
-                ver_solo_activas = st.checkbox("✅ Solo activas", value=False, key="filtro_activas")
-            
-            # Botón de exportar (visible siempre)
-            col_export1, col_export2 = st.columns([3, 1])
-            with col_export2:
-                if st.button("📥 EXPORTAR A EXCEL", type="primary", use_container_width=True):
-                    # Preparar datos para exportar
-                    export_df = df[['fecha_display', 'producto', 'total_usd', 'monto_cobrado_bs', 'estado', 'cliente']].copy()
-                    export_df.columns = ['Fecha', 'Productos', 'Total USD', 'Total Bs', 'Estado', 'Cliente']
-                    export_df = export_df.sort_values('Fecha', ascending=False)
-                    href = exportar_excel(export_df, f"ventas_turno_{id_turno}_{datetime.now().strftime('%Y%m%d_%H%M')}")
-                    st.markdown(href, unsafe_allow_html=True)
-            
-            st.markdown("---")
+            # Filtro por texto (opcional)
+            buscar_texto = st.text_input("🔍 Buscar producto", placeholder="Ej: Ron...", key="filtro_buscar")
             
             # Aplicar filtros
             df_filtrado = df.copy()
             
-            if fecha_filtro:
-                df_filtrado = df_filtrado[df_filtrado['fecha_corta'].str.contains(fecha_filtro, na=False)]
+            # Filtro por rango de fechas
+            if fecha_desde:
+                df_filtrado = df_filtrado[df_filtrado['fecha_dt'].dt.date >= fecha_desde]
+            if fecha_hasta:
+                df_filtrado = df_filtrado[df_filtrado['fecha_dt'].dt.date <= fecha_hasta]
             
+            # Filtro por número de turno
+            if turno_filtro > 0:
+                df_filtrado = df_filtrado[df_filtrado['id_cierre'] == turno_filtro]
+            
+            # Filtro por estado
             if estado_filtro != "Todos":
                 df_filtrado = df_filtrado[df_filtrado['estado'] == estado_filtro]
             
+            # Filtro por texto en producto
             if buscar_texto:
                 df_filtrado = df_filtrado[df_filtrado['producto'].str.contains(buscar_texto, case=False, na=False)]
             
-            if ver_solo_activas:
-                df_filtrado = df_filtrado[df_filtrado['estado'] != 'Anulado']
-            
             # ============================================
-            # MÉTRICAS SUPERIORES
+            # MÉTRICAS SUPERIORES (sobre las ventas activas filtradas)
             # ============================================
             if not df_filtrado.empty:
-                # Calcular métricas
-                total_usd = df_filtrado[df_filtrado['estado'] != 'Anulado']['total_usd'].sum() if any(df_filtrado['estado'] != 'Anulado') else 0
-                total_bs = df_filtrado[df_filtrado['estado'] != 'Anulado']['monto_cobrado_bs'].sum() if any(df_filtrado['estado'] != 'Anulado') else 0
-                cantidad_ventas = len(df_filtrado[df_filtrado['estado'] != 'Anulado'])
+                # Calcular métricas solo para ventas activas
+                df_activas = df_filtrado[df_filtrado['estado'] != 'Anulado']
+                total_usd = df_activas['total_usd'].sum() if not df_activas.empty else 0
+                total_bs = df_activas['monto_cobrado_bs'].sum() if not df_activas.empty else 0
+                cantidad_ventas = len(df_activas)
                 promedio_usd = total_usd / cantidad_ventas if cantidad_ventas > 0 else 0
                 
                 # Mostrar métricas
@@ -1494,7 +1485,7 @@ elif opcion == "📜 HISTORIAL":
                 st.markdown("<br>", unsafe_allow_html=True)
                 
                 # ============================================
-                # TABLA DE VENTAS (con diseño mejorado)
+                # TABLA DE VENTAS (estilos iguales)
                 # ============================================
                 st.markdown("""
                     <style>
@@ -1538,21 +1529,23 @@ elif opcion == "📜 HISTORIAL":
                     </style>
                 """, unsafe_allow_html=True)
                 
-                # Cabecera de la tabla
-                col_h1, col_h2, col_h3, col_h4, col_h5, col_h6, col_h7 = st.columns([0.8, 0.8, 2.5, 1.2, 1.2, 0.8, 0.8])
+                # Cabecera (agregué columna de turno)
+                col_h1, col_h2, col_h3, col_h4, col_h5, col_h6, col_h7, col_h8 = st.columns([0.6, 0.8, 0.8, 2.2, 1.0, 1.0, 0.8, 0.8])
                 with col_h1:
-                    st.markdown("**ID**")
+                    st.markdown("**Turno**")
                 with col_h2:
-                    st.markdown("**Hora**")
+                    st.markdown("**ID**")
                 with col_h3:
-                    st.markdown("**Productos**")
+                    st.markdown("**Hora**")
                 with col_h4:
-                    st.markdown("**USD**")
+                    st.markdown("**Productos**")
                 with col_h5:
-                    st.markdown("**Bs**")
+                    st.markdown("**USD**")
                 with col_h6:
-                    st.markdown("**Estado**")
+                    st.markdown("**Bs**")
                 with col_h7:
+                    st.markdown("**Estado**")
+                with col_h8:
                     st.markdown("**Acción**")
                 
                 st.markdown("<hr style='margin:0; margin-bottom:0.5rem;'>", unsafe_allow_html=True)
@@ -1565,30 +1558,26 @@ elif opcion == "📜 HISTORIAL":
                     
                     # Limitar productos
                     productos = venta['producto']
-                    if len(productos) > 40:
-                        productos = productos[:40] + "..."
+                    if len(productos) > 35:
+                        productos = productos[:35] + "..."
                     
-                    cols = st.columns([0.8, 0.8, 2.5, 1.2, 1.2, 0.8, 0.8])
+                    cols = st.columns([0.6, 0.8, 0.8, 2.2, 1.0, 1.0, 0.8, 0.8])
                     
                     with cols[0]:
-                        st.markdown(f"<span style='font-weight:500;'>#{venta['id']}</span>", unsafe_allow_html=True)
-                    
+                        st.markdown(f"<span style='font-weight:500;'>#{venta['id_cierre']}</span>", unsafe_allow_html=True)
                     with cols[1]:
-                        st.markdown(f"<span>{venta['hora']}</span>", unsafe_allow_html=True)
-                    
+                        st.markdown(f"<span style='font-weight:500;'>#{venta['id']}</span>", unsafe_allow_html=True)
                     with cols[2]:
-                        st.markdown(f"<span title='{venta['producto']}'>{productos}</span>", unsafe_allow_html=True)
-                    
+                        st.markdown(f"<span>{venta['hora']}</span>", unsafe_allow_html=True)
                     with cols[3]:
-                        st.markdown(f"<span style='font-weight:600;'>${venta['total_usd']:,.2f}</span>", unsafe_allow_html=True)
-                    
+                        st.markdown(f"<span title='{venta['producto']}'>{productos}</span>", unsafe_allow_html=True)
                     with cols[4]:
-                        st.markdown(f"<span>{venta['monto_cobrado_bs']:,.0f}</span>", unsafe_allow_html=True)
-                    
+                        st.markdown(f"<span style='font-weight:600;'>${venta['total_usd']:,.2f}</span>", unsafe_allow_html=True)
                     with cols[5]:
-                        st.markdown(badge, unsafe_allow_html=True)
-                    
+                        st.markdown(f"<span>{venta['monto_cobrado_bs']:,.0f}</span>", unsafe_allow_html=True)
                     with cols[6]:
+                        st.markdown(badge, unsafe_allow_html=True)
+                    with cols[7]:
                         if not es_anulado:
                             if st.button("🚫", key=f"btn_anular_{venta['id']}", help="Anular venta"):
                                 try:
@@ -1631,19 +1620,15 @@ elif opcion == "📜 HISTORIAL":
                     if idx < len(df_filtrado) - 1:
                         st.markdown("<hr style='margin:0.2rem 0; opacity:0.3;'>", unsafe_allow_html=True)
                 
-                # Totales al pie
-                df_activas = df_filtrado[df_filtrado['estado'] != 'Anulado']
+                # Totales al pie (sobre las ventas activas filtradas)
                 if not df_activas.empty:
-                    total_usd_filtrado = df_activas['total_usd'].sum()
-                    total_bs_filtrado = df_activas['monto_cobrado_bs'].sum()
-                    
                     st.markdown(f"""
                         <div style='background-color: #f0f2f6; padding: 1rem; border-radius: 8px; margin-top: 1rem;'>
                             <div style='display: flex; justify-content: space-between; align-items: center;'>
-                                <span style='font-weight:600;'>📊 TOTALES EN PANTALLA:</span>
+                                <span style='font-weight:600;'>📊 TOTALES EN PANTALLA (ventas activas):</span>
                                 <span>
-                                    <span style='color: #28a745; font-weight:600;'>${total_usd_filtrado:,.2f}</span> | 
-                                    <span style='color: #007bff; font-weight:600;'>{total_bs_filtrado:,.0f} Bs</span>
+                                    <span style='color: #28a745; font-weight:600;'>${total_usd:,.2f}</span> | 
+                                    <span style='color: #007bff; font-weight:600;'>{total_bs:,.0f} Bs</span>
                                 </span>
                             </div>
                         </div>
@@ -1651,7 +1636,7 @@ elif opcion == "📜 HISTORIAL":
             else:
                 st.info("📭 No hay ventas que coincidan con los filtros")
         else:
-            st.info("📭 No hay ventas registradas en este turno")
+            st.info("📭 No hay ventas registradas en el sistema")
             
     except Exception as e:
         st.error(f"Error cargando historial: {e}")
