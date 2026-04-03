@@ -236,24 +236,98 @@ else:
     st.session_state.db_connected = False
 
 # ============================================
-# SISTEMA DE USUARIOS (RÁPIDO)
+# SISTEMA DE USUARIOS (PERSISTENTE CON LOCALSTORAGE)
 # ============================================
+# Inyectar JavaScript para manejar localStorage
+st.markdown("""
+    <script>
+    // Función para guardar usuario en localStorage
+    function guardarUsuario(usuario) {
+        localStorage.setItem('usuario_actual', JSON.stringify(usuario));
+    }
+    // Función para obtener usuario de localStorage
+    function obtenerUsuario() {
+        const user = localStorage.getItem('usuario_actual');
+        return user ? JSON.parse(user) : null;
+    }
+    // Función para eliminar usuario de localStorage
+    function eliminarUsuario() {
+        localStorage.removeItem('usuario_actual');
+    }
+    </script>
+""", unsafe_allow_html=True)
+
 USUARIOS = {
     'admin': {'nombre': 'Administrador', 'clave': '1234', 'rol': 'admin'},
     'empleada': {'nombre': 'Empleada', 'clave': '5678', 'rol': 'empleado'}
 }
 
-if 'usuario_actual' not in st.session_state:
-    st.session_state.usuario_actual = None
+# Inicializar usuario_actual: primero desde session_state, si no, desde localStorage
+if 'usuario_actual' not in st.session_state or st.session_state.usuario_actual is None:
+    # Intentar recuperar de localStorage mediante JavaScript (solo en el navegador)
+    # Usamos st.query_params como un puente para pasar datos de JS a Python
+    if 'usuario_local' not in st.query_params:
+        # Si no hay usuario en los parámetros, inyectamos un script que lo recupere y recargue
+        st.markdown("""
+            <script>
+            const user = localStorage.getItem('usuario_actual');
+            if (user) {
+                const usuario = JSON.parse(user);
+                // Redirigir con query param
+                window.location.href = window.location.pathname + '?usuario_local=' + encodeURIComponent(user);
+            }
+            </script>
+        """, unsafe_allow_html=True)
+        st.session_state.usuario_actual = None
+    else:
+        # Tenemos usuario en query_params, lo cargamos y limpiamos la URL
+        usuario_json = st.query_params.get('usuario_local')
+        if usuario_json:
+            try:
+                st.session_state.usuario_actual = json.loads(usuario_json)
+                # Limpiar query_params para que la URL quede limpia
+                st.query_params.clear()
+            except:
+                st.session_state.usuario_actual = None
+        else:
+            st.session_state.usuario_actual = None
+else:
+    # Ya existe en session_state, aseguramos que también esté en localStorage
+    if st.session_state.usuario_actual:
+        # Sincronizar con localStorage vía script (solo si el usuario no está guardado)
+        st.markdown(f"""
+            <script>
+            const current = localStorage.getItem('usuario_actual');
+            if (!current) {{
+                localStorage.setItem('usuario_actual', JSON.stringify({json.dumps(st.session_state.usuario_actual)}));
+            }}
+            </script>
+        """, unsafe_allow_html=True)
 
 def login(usuario, clave):
     if usuario in USUARIOS and USUARIOS[usuario]['clave'] == clave:
-        st.session_state.usuario_actual = USUARIOS[usuario]
+        user_data = USUARIOS[usuario]
+        st.session_state.usuario_actual = user_data
+        # Guardar en localStorage mediante JavaScript
+        st.markdown(f"""
+            <script>
+            localStorage.setItem('usuario_actual', JSON.stringify({json.dumps(user_data)}));
+            </script>
+        """, unsafe_allow_html=True)
         return True
     return False
 
 def logout():
     st.session_state.usuario_actual = None
+    # Eliminar de localStorage
+    st.markdown("""
+        <script>
+        localStorage.removeItem('usuario_actual');
+        </script>
+    """, unsafe_allow_html=True)
+    # Limpiar también query_params por si acaso
+    st.query_params.clear()
+    st.rerun()
 
 # ============================================
 # VERIFICAR TURNO ACTIVO (MEJORADO)
