@@ -1041,7 +1041,8 @@ elif opcion == "🛒 PUNTO DE VENTA":
             
             for idx, item in enumerate(carrito):
                 with st.container(border=True):
-                    col1, col2, col3, col4 = st.columns([2.5, 1, 1, 0.5])
+                    # Ajuste: aumentar espacio para mostrar subtotal en Bs
+                    col1, col2, col3, col4 = st.columns([2.5, 1, 1.2, 0.5])
                     
                     with col1:
                         st.markdown(f"**{item['nombre']}**")
@@ -1064,8 +1065,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
                                 st.session_state.mesas[st.session_state.mesa_actual]['carrito'].pop(idx)
                                 st.rerun()
                             else:
-                                # <<< NUEVO: Recalcular precio mayor al cambiar cantidad
-                                # Obtener datos del producto desde el inventario en caché o Supabase
+                                # Recalcular precio mayor al cambiar cantidad
                                 prod_data = None
                                 if st.session_state.online_mode:
                                     try:
@@ -1075,7 +1075,6 @@ elif opcion == "🛒 PUNTO DE VENTA":
                                     except:
                                         pass
                                 if not prod_data:
-                                    # Fallback: usar datos locales (inventario en caché)
                                     inventario_local = OfflineManager.obtener_datos_local('inventario')
                                     if inventario_local:
                                         for p in inventario_local:
@@ -1084,7 +1083,6 @@ elif opcion == "🛒 PUNTO DE VENTA":
                                                 break
                                 
                                 if prod_data:
-                                    # Determinar nuevo precio según cantidad y umbral
                                     if nueva_cant >= prod_data['min_mayor'] and not es_tasca:
                                         nuevo_precio = float(prod_data['precio_mayor'])
                                         tipo_precio = " (Mayor)"
@@ -1104,7 +1102,10 @@ elif opcion == "🛒 PUNTO DE VENTA":
                                 st.rerun()
                     
                     with col3:
+                        # Mostrar subtotal en USD y en Bs
+                        subtotal_bs = item['subtotal'] * tasa
                         st.markdown(f"**${item['subtotal']:.2f}**")
+                        st.caption(f"{subtotal_bs:,.2f} Bs")
                     
                     with col4:
                         if st.button("❌", key=f"del_mesa_{idx}"):
