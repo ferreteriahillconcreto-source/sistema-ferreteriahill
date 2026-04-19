@@ -1461,7 +1461,7 @@ elif opcion == "💸 GASTOS":
                 st.warning("⚠️ Complete los campos obligatorios (*)")
 
 # ============================================
-# MÓDULO 4: HISTORIAL DE VENTAS (TODOS LOS TURNOS)
+# MÓDULO 4: HISTORIAL DE VENTAS (TODOS LOS TURNOS) - CON TIPO DE PAGO Y FACTURA
 # ============================================
 elif opcion == "📜 HISTORIAL":
     requiere_usuario()
@@ -1479,7 +1479,6 @@ elif opcion == "📜 HISTORIAL":
             df = pd.DataFrame(response.data) if response.data else pd.DataFrame()
             OfflineManager.guardar_datos_local('ventas_historial', df.to_dict('records'))
         else:
-            # <<< NUEVO: Modo offline usar datos locales
             df = pd.DataFrame(OfflineManager.obtener_datos_local('ventas_historial') or [])
         
         if not df.empty:
@@ -1487,6 +1486,25 @@ elif opcion == "📜 HISTORIAL":
             df['hora'] = df['fecha_dt'].dt.strftime('%H:%M')
             df['fecha_corta'] = df['fecha_dt'].dt.strftime('%d/%m/%Y')
             df['fecha_display'] = df['fecha_dt'].dt.strftime('%d/%m/%Y %H:%M')
+            
+            # Función para generar resumen de métodos de pago
+            def resumen_pagos(row):
+                metodos = []
+                if row.get('pago_efectivo', 0) > 0:
+                    metodos.append(f"Ef. Bs {row['pago_efectivo']:,.0f}")
+                if row.get('pago_movil', 0) > 0:
+                    metodos.append(f"Pago Móvil {row['pago_movil']:,.0f}")
+                if row.get('pago_punto', 0) > 0:
+                    metodos.append(f"Punto {row['pago_punto']:,.0f}")
+                if row.get('pago_divisas', 0) > 0:
+                    metodos.append(f"Ef. USD ${row['pago_divisas']:.2f}")
+                if row.get('pago_zelle', 0) > 0:
+                    metodos.append(f"Zelle ${row['pago_zelle']:.2f}")
+                if row.get('pago_otros', 0) > 0:
+                    metodos.append(f"Otros USD ${row['pago_otros']:.2f}")
+                return ", ".join(metodos) if metodos else "Efectivo (no registrado)"
+            
+            df['metodos_pago'] = df.apply(resumen_pagos, axis=1)
             
             st.subheader("🔍 Filtrar ventas")
             col_f1, col_f2, col_f3, col_f4 = st.columns(4)
@@ -1563,6 +1581,7 @@ elif opcion == "📜 HISTORIAL":
                 
                 st.markdown("<br>", unsafe_allow_html=True)
                 
+                # Estilos
                 st.markdown("""
                     <style>
                     .venta-row {
@@ -1605,7 +1624,8 @@ elif opcion == "📜 HISTORIAL":
                     </style>
                 """, unsafe_allow_html=True)
                 
-                col_h1, col_h2, col_h3, col_h4, col_h5, col_h6, col_h7, col_h8 = st.columns([0.6, 0.8, 0.8, 2.2, 1.0, 1.0, 0.8, 0.8])
+                # Ajustar ancho de columnas: agregamos una columna para métodos de pago y otra para factura
+                col_h1, col_h2, col_h3, col_h4, col_h5, col_h6, col_h7, col_h8, col_h9 = st.columns([0.6, 0.8, 0.8, 2.2, 1.0, 1.0, 1.2, 0.8, 0.8])
                 with col_h1:
                     st.markdown("**Turno**")
                 with col_h2:
@@ -1619,9 +1639,11 @@ elif opcion == "📜 HISTORIAL":
                 with col_h6:
                     st.markdown("**Bs**")
                 with col_h7:
-                    st.markdown("**Estado**")
+                    st.markdown("**Métodos de pago**")
                 with col_h8:
-                    st.markdown("**Acción**")
+                    st.markdown("**Estado**")
+                with col_h9:
+                    st.markdown("**Acciones**")
                 
                 st.markdown("<hr style='margin:0; margin-bottom:0.5rem;'>", unsafe_allow_html=True)
                 
@@ -1633,7 +1655,7 @@ elif opcion == "📜 HISTORIAL":
                     if len(productos) > 35:
                         productos = productos[:35] + "..."
                     
-                    cols = st.columns([0.6, 0.8, 0.8, 2.2, 1.0, 1.0, 0.8, 0.8])
+                    cols = st.columns([0.6, 0.8, 0.8, 2.2, 1.0, 1.0, 1.2, 0.8, 0.8])
                     with cols[0]:
                         st.markdown(f"<span style='font-weight:500;'>#{venta['id_cierre']}</span>", unsafe_allow_html=True)
                     with cols[1]:
@@ -1647,8 +1669,11 @@ elif opcion == "📜 HISTORIAL":
                     with cols[5]:
                         st.markdown(f"<span>{venta['monto_cobrado_bs']:,.0f}</span>", unsafe_allow_html=True)
                     with cols[6]:
-                        st.markdown(badge, unsafe_allow_html=True)
+                        st.markdown(f"<span style='font-size:0.8rem;'>{venta['metodos_pago']}</span>", unsafe_allow_html=True)
                     with cols[7]:
+                        st.markdown(badge, unsafe_allow_html=True)
+                    with cols[8]:
+                        # Botón de anular (solo si no está anulado)
                         if not es_anulado:
                             if st.button("🚫", key=f"btn_anular_{venta['id']}", help="Anular venta"):
                                 try:
@@ -1684,8 +1709,83 @@ elif opcion == "📜 HISTORIAL":
                                     
                                 except Exception as e:
                                     st.error(f"Error al anular: {e}")
-                        else:
-                            st.markdown("—")
+                        # Botón para ver factura (siempre visible)
+                        with st.popover("👁️", help="Ver factura"):
+                            st.markdown("### 🧾 FACTURA DE VENTA")
+                            st.markdown(f"""
+                                <div style="background:white; padding:15px; border-radius:10px; border:1px solid #ddd;">
+                                    <p><b>Turno:</b> #{venta['id_cierre']}</p>
+                                    <p><b>Fecha:</b> {venta['fecha_display']}</p>
+                                    <p><b>Cajero:</b> {venta.get('cliente', 'N/A')}</p>
+                                    <p><b>Cliente:</b> {venta.get('cliente', 'General')}</p>
+                                    <hr>
+                                    <table style="width:100%; border-collapse: collapse;">
+                                        <thead>
+                                            <tr style="border-bottom:1px solid #ccc;">
+                                                <th style="text-align:left;">Cant</th>
+                                                <th style="text-align:left;">Producto</th>
+                                                <th style="text-align:right;">Precio</th>
+                                                <th style="text-align:right;">Subtotal</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                            """, unsafe_allow_html=True)
+                            
+                            # Obtener items desde JSON
+                            items = venta.get('items')
+                            if isinstance(items, str):
+                                items = json.loads(items)
+                            if items and isinstance(items, list):
+                                for item in items:
+                                    st.markdown(f"""
+                                        <tr>
+                                            <td style="padding:4px;">{item.get('cantidad', 0):.0f}</td>
+                                            <td style="padding:4px;">{item.get('nombre', '')}</td>
+                                            <td style="padding:4px; text-align:right;">${item.get('precio', 0):.2f}</td>
+                                            <td style="padding:4px; text-align:right;">${item.get('subtotal', 0):.2f}</td>
+                                        </tr>
+                                    """, unsafe_allow_html=True)
+                            
+                            st.markdown(f"""
+                                        </tbody>
+                                    </table>
+                                    <hr>
+                                    <p><b>Total USD:</b> ${venta['total_usd']:.2f}</p>
+                                    <p><b>Total Bs:</b> {venta['monto_cobrado_bs']:.2f} Bs</p>
+                                    <hr>
+                                    <p><b>Pagos:</b></p>
+                                    <ul>
+                            """, unsafe_allow_html=True)
+                            
+                            # Mostrar métodos de pago con montos
+                            if venta.get('pago_efectivo', 0) > 0:
+                                st.markdown(f"<li>Efectivo Bs: {venta['pago_efectivo']:,.2f}</li>", unsafe_allow_html=True)
+                            if venta.get('pago_movil', 0) > 0:
+                                st.markdown(f"<li>Pago Móvil Bs: {venta['pago_movil']:,.2f}</li>", unsafe_allow_html=True)
+                            if venta.get('pago_punto', 0) > 0:
+                                st.markdown(f"<li>Punto Venta Bs: {venta['pago_punto']:,.2f}</li>", unsafe_allow_html=True)
+                            if venta.get('pago_divisas', 0) > 0:
+                                st.markdown(f"<li>Efectivo USD: ${venta['pago_divisas']:.2f}</li>", unsafe_allow_html=True)
+                            if venta.get('pago_zelle', 0) > 0:
+                                st.markdown(f"<li>Zelle USD: ${venta['pago_zelle']:.2f}</li>", unsafe_allow_html=True)
+                            if venta.get('pago_otros', 0) > 0:
+                                st.markdown(f"<li>Otros USD: ${venta['pago_otros']:.2f}</li>", unsafe_allow_html=True)
+                            
+                            # Calcular vuelto (aproximado)
+                            total_pagado_usd = sum([
+                                venta.get('pago_divisas', 0),
+                                venta.get('pago_zelle', 0),
+                                venta.get('pago_otros', 0),
+                                (venta.get('pago_efectivo', 0) + venta.get('pago_movil', 0) + venta.get('pago_punto', 0)) / venta.get('tasa_cambio', 60)
+                            ])
+                            vuelto = total_pagado_usd - venta['total_usd']
+                            st.markdown(f"""
+                                    </ul>
+                                    <hr>
+                                    <p><b>Vuelto:</b> ${vuelto:.2f} / {(vuelto * venta.get('tasa_cambio', 60)):.2f} Bs</p>
+                                    <p style="text-align:center;">¡Gracias por su compra!</p>
+                                </div>
+                            """, unsafe_allow_html=True)
                     
                     if idx < len(df_filtrado) - 1:
                         st.markdown("<hr style='margin:0.2rem 0; opacity:0.3;'>", unsafe_allow_html=True)
