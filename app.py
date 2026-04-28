@@ -1018,7 +1018,7 @@ elif opcion == "💸 GASTOS":
                 st.warning("⚠️ Complete los campos obligatorios (*)")
 
 # ============================================
-# MÓDULO 4: HISTORIAL CON BOTONES EN LA MISMA FILA
+# MÓDULO 4: HISTORIAL CON FILTROS Y DIVISORES
 # ============================================
 elif opcion == "📜 HISTORIAL":
     requiere_usuario()
@@ -1043,6 +1043,13 @@ elif opcion == "📜 HISTORIAL":
     if 'historial_offset' not in st.session_state:
         st.session_state.historial_offset = 0
     LIMITE = 100  # ventas por página
+    
+    # Filtro de estado (disponible siempre)
+    estado_filtro = st.selectbox(
+        "Filtrar por estado",
+        ["Todos", "Finalizado", "Anulado"],
+        key="filtro_estado_historial"
+    )
     
     def cargar_ventas(offset, limite):
         if tipo_busqueda == "🔢 Número de turno":
@@ -1141,7 +1148,11 @@ elif opcion == "📜 HISTORIAL":
             
             df['metodos_pago'] = df.apply(resumen_pagos, axis=1)
             
-            # Métricas
+            # Aplicar filtro de estado
+            if estado_filtro != "Todos":
+                df = df[df['estado'] == estado_filtro]
+            
+            # Métricas (solo ventas activas)
             df_activas = df[df['estado'] != 'Anulado']
             total_usd = df_activas['total_usd'].sum() if not df_activas.empty else 0
             total_bs = df_activas['monto_cobrado_bs'].sum() if not df_activas.empty else 0
@@ -1316,7 +1327,9 @@ elif opcion == "📜 HISTORIAL":
                             </div>
                         """, unsafe_allow_html=True)
                 
-                st.markdown("<hr style='margin:0.2rem 0; opacity:0.3;'>", unsafe_allow_html=True)
+                # Línea divisoria entre filas (excepto después de la última)
+                if idx < len(df) - 1:
+                    st.markdown("<hr style='margin:0.2rem 0; opacity:0.3;'>", unsafe_allow_html=True)
             
             # Paginación
             if len(ventas) == LIMITE:
