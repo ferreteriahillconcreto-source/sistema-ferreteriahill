@@ -1018,7 +1018,7 @@ elif opcion == "💸 GASTOS":
                 st.warning("⚠️ Complete los campos obligatorios (*)")
 
 # ============================================
-# MÓDULO 4: HISTORIAL (OPTIMIZADO - CARGA POR TURNO O FECHAS)
+# MÓDULO 4: HISTORIAL CON BOTONES EN LA MISMA FILA
 # ============================================
 elif opcion == "📜 HISTORIAL":
     requiere_usuario()
@@ -1030,7 +1030,7 @@ elif opcion == "📜 HISTORIAL":
         </div>
     """, unsafe_allow_html=True)
     
-    # Selección de carga
+    # Selección de carga (turno o fechas)
     st.subheader("🔍 Selecciona qué ventas quieres ver")
     tipo_busqueda = st.radio(
         "Mostrar ventas por:",
@@ -1042,7 +1042,7 @@ elif opcion == "📜 HISTORIAL":
     # Variables de sesión para paginación
     if 'historial_offset' not in st.session_state:
         st.session_state.historial_offset = 0
-    LIMITE = 100
+    LIMITE = 100  # ventas por página
     
     def cargar_ventas(offset, limite):
         if tipo_busqueda == "🔢 Número de turno":
@@ -1070,6 +1070,7 @@ elif opcion == "📜 HISTORIAL":
                 .range(offset, offset + limite - 1)\
                 .execute().data or []
     
+    # Controles según tipo de búsqueda
     if tipo_busqueda == "🔢 Número de turno":
         turno_especifico = st.number_input("Ingresa el número de turno", min_value=1, step=1, key="turno_especifico")
         col_b1, col_b2 = st.columns(2)
@@ -1104,6 +1105,7 @@ elif opcion == "📜 HISTORIAL":
                 st.session_state.historial_offset = 0
                 st.rerun()
     
+    # Mostrar resultados si se ha cargado algo
     if st.session_state.get('historial_datos_cargados', False):
         with st.spinner("Cargando ventas..."):
             ventas = cargar_ventas(st.session_state.historial_offset, LIMITE)
@@ -1115,11 +1117,12 @@ elif opcion == "📜 HISTORIAL":
                 st.rerun()
         else:
             df = pd.DataFrame(ventas)
+            # Procesar fechas
             df['fecha_dt'] = pd.to_datetime(df['fecha'])
             df['hora'] = df['fecha_dt'].dt.strftime('%H:%M')
-            df['fecha_corta'] = df['fecha_dt'].dt.strftime('%d/%m/%Y')
             df['fecha_display'] = df['fecha_dt'].dt.strftime('%d/%m/%Y %H:%M')
             
+            # Función resumen pagos
             def resumen_pagos(row):
                 metodos = []
                 if row.get('pago_efectivo', 0) > 0:
@@ -1138,6 +1141,7 @@ elif opcion == "📜 HISTORIAL":
             
             df['metodos_pago'] = df.apply(resumen_pagos, axis=1)
             
+            # Métricas
             df_activas = df[df['estado'] != 'Anulado']
             total_usd = df_activas['total_usd'].sum() if not df_activas.empty else 0
             total_bs = df_activas['monto_cobrado_bs'].sum() if not df_activas.empty else 0
@@ -1147,28 +1151,32 @@ elif opcion == "📜 HISTORIAL":
             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
             with col_m1:
                 st.markdown(f"""
-                    <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 1rem; border-radius: 10px; color: white; text-align: center;'>
+                    <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                            padding: 1rem; border-radius: 10px; color: white; text-align: center;'>
                         <span style='font-size: 0.9rem; opacity: 0.9;'>💰 TOTAL USD</span><br>
                         <span style='font-size: 1.8rem; font-weight: 700;'>${total_usd:,.2f}</span>
                     </div>
                 """, unsafe_allow_html=True)
             with col_m2:
                 st.markdown(f"""
-                    <div style='background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 1rem; border-radius: 10px; color: white; text-align: center;'>
+                    <div style='background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
+                            padding: 1rem; border-radius: 10px; color: white; text-align: center;'>
                         <span style='font-size: 0.9rem; opacity: 0.9;'>💵 TOTAL BS</span><br>
                         <span style='font-size: 1.8rem; font-weight: 700;'>{total_bs:,.0f}</span>
                     </div>
                 """, unsafe_allow_html=True)
             with col_m3:
                 st.markdown(f"""
-                    <div style='background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); padding: 1rem; border-radius: 10px; color: white; text-align: center;'>
+                    <div style='background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); 
+                            padding: 1rem; border-radius: 10px; color: white; text-align: center;'>
                         <span style='font-size: 0.9rem; opacity: 0.9;'>📊 VENTAS</span><br>
                         <span style='font-size: 1.8rem; font-weight: 700;'>{cantidad_ventas}</span>
                     </div>
                 """, unsafe_allow_html=True)
             with col_m4:
                 st.markdown(f"""
-                    <div style='background: linear-gradient(135deg, #5f2c82 0%, #49a09d 100%); padding: 1rem; border-radius: 10px; color: white; text-align: center;'>
+                    <div style='background: linear-gradient(135deg, #5f2c82 0%, #49a09d 100%); 
+                            padding: 1rem; border-radius: 10px; color: white; text-align: center;'>
                         <span style='font-size: 0.9rem; opacity: 0.9;'>📈 PROMEDIO</span><br>
                         <span style='font-size: 1.8rem; font-weight: 700;'>${promedio_usd:,.2f}</span>
                     </div>
@@ -1176,45 +1184,48 @@ elif opcion == "📜 HISTORIAL":
             
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # Tabla de ventas con st.dataframe (rápido)
-            df_show = df.copy()
-            df_show['Turno'] = df_show['id_cierre'].astype(str)
-            df_show['ID'] = df_show['id'].astype(str)
-            df_show['Hora'] = df_show['hora']
-            df_show['Productos'] = df_show['producto'].apply(lambda x: x[:40] + '...' if len(x) > 40 else x)
-            df_show['USD'] = df_show['total_usd'].apply(lambda x: f"${x:,.2f}")
-            df_show['Bs'] = df_show['monto_cobrado_bs'].apply(lambda x: f"{x:,.0f}")
-            df_show['Métodos'] = df_show['metodos_pago']
-            df_show['Estado'] = df_show['estado'].apply(lambda x: '✅ Finalizado' if x == 'Finalizado' else '❌ Anulado')
+            # Tabla manual con st.columns para tener botones por fila
+            # Encabezados
+            headers = st.columns([1, 1, 1.2, 3, 1, 1, 2, 1, 0.8, 0.8])
+            headers[0].write("**Turno**")
+            headers[1].write("**ID**")
+            headers[2].write("**Hora**")
+            headers[3].write("**Productos**")
+            headers[4].write("**USD**")
+            headers[5].write("**Bs**")
+            headers[6].write("**Métodos de pago**")
+            headers[7].write("**Estado**")
+            headers[8].write("**Anular**")
+            headers[9].write("**Factura**")
+            st.markdown("<hr style='margin:0; margin-bottom:0.5rem;'>", unsafe_allow_html=True)
             
-            st.dataframe(
-                df_show[['Turno', 'ID', 'Hora', 'Productos', 'USD', 'Bs', 'Métodos', 'Estado']],
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Turno": "Turno",
-                    "ID": "ID Venta",
-                    "Hora": "Hora",
-                    "Productos": "Productos",
-                    "USD": st.column_config.NumberColumn("USD", format="$%.2f"),
-                    "Bs": st.column_config.NumberColumn("Bs", format="%.0f Bs"),
-                    "Métodos": "Métodos de pago",
-                    "Estado": "Estado"
-                }
-            )
-            
-            # Botones de anular y ver factura (por fila)
-            st.markdown("---")
-            st.subheader("Acciones por venta")
             for idx, venta in df.iterrows():
                 es_anulado = venta['estado'] == 'Anulado'
-                badge = 'ANULADA' if es_anulado else 'FINALIZADA'
-                col_a1, col_a2, col_a3 = st.columns([4, 1, 1])
-                with col_a1:
-                    st.markdown(f"**#{venta['id']}** - {venta['hora']} - {venta['producto'][:50]}... - **${venta['total_usd']:.2f}** / {venta['monto_cobrado_bs']:.0f} Bs - {badge}")
-                with col_a2:
+                badge = "ANULADA" if es_anulado else "FINALIZADA"
+                productos = venta['producto']
+                if len(productos) > 50:
+                    productos = productos[:50] + "..."
+                
+                cols = st.columns([1, 1, 1.2, 3, 1, 1, 2, 1, 0.8, 0.8])
+                with cols[0]:
+                    st.write(f"#{venta['id_cierre']}")
+                with cols[1]:
+                    st.write(f"#{venta['id']}")
+                with cols[2]:
+                    st.write(venta['hora'])
+                with cols[3]:
+                    st.write(productos)
+                with cols[4]:
+                    st.write(f"${venta['total_usd']:.2f}")
+                with cols[5]:
+                    st.write(f"{venta['monto_cobrado_bs']:.0f}")
+                with cols[6]:
+                    st.write(venta['metodos_pago'])
+                with cols[7]:
+                    st.write(badge)
+                with cols[8]:
                     if not es_anulado:
-                        if st.button("🚫 Anular", key=f"anular_{venta['id']}"):
+                        if st.button("🚫", key=f"anular_{venta['id']}", help="Anular venta"):
                             try:
                                 items = venta.get('items')
                                 if isinstance(items, str):
@@ -1229,13 +1240,13 @@ elif opcion == "📜 HISTORIAL":
                                                     "stock": stock_actual + item['cantidad']
                                                 }).eq("id", item['id']).execute()
                                 db.table("ventas").update({"estado": "Anulado"}).eq("id", venta['id']).execute()
-                                st.success(f"Venta #{venta['id']} anulada")
+                                st.success(f"✅ Venta #{venta['id']} anulada")
                                 time.sleep(1)
                                 st.rerun()
                             except Exception as e:
-                                st.error(f"Error: {e}")
-                with col_a3:
-                    with st.popover("👁️", help="Ver factura"):
+                                st.error(f"Error al anular: {e}")
+                with cols[9]:
+                    with st.popover("👁️", help="Ver factura", use_container_width=False):
                         st.markdown("### 🧾 FACTURA DE VENTA")
                         st.markdown(f"""
                             <div style="background:white; padding:15px; border-radius:10px; border:1px solid #ddd;">
@@ -1304,7 +1315,8 @@ elif opcion == "📜 HISTORIAL":
                                 <p style="text-align:center;">¡Gracias por su compra!</p>
                             </div>
                         """, unsafe_allow_html=True)
-                st.markdown("<hr style='margin:0.2rem 0;'>", unsafe_allow_html=True)
+                
+                st.markdown("<hr style='margin:0.2rem 0; opacity:0.3;'>", unsafe_allow_html=True)
             
             # Paginación
             if len(ventas) == LIMITE:
@@ -1323,6 +1335,7 @@ elif opcion == "📜 HISTORIAL":
                     st.session_state.historial_offset -= LIMITE
                     st.rerun()
             
+            # Botón para nueva búsqueda
             if st.button("🔍 Nueva búsqueda", use_container_width=True):
                 st.session_state.historial_datos_cargados = False
                 st.session_state.historial_offset = 0
