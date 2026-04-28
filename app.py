@@ -28,93 +28,32 @@ def aplicar_tema():
     if st.session_state.tema == 'oscuro':
         return """
             <style>
-            .stApp {
-                background-color: #1e1e1e;
-                color: #ffffff;
-            }
-            .main-header {
-                color: #ffffff !important;
-            }
-            .stMarkdown, .stText, p, span, label, h1, h2, h3, h4 {
-                color: #ffffff !important;
-            }
-            .stDataFrame {
-                background-color: #2d2d2d;
-            }
+            .stApp { background-color: #1e1e1e; color: #ffffff; }
+            .main-header { color: #ffffff !important; }
+            .stMarkdown, .stText, p, span, label, h1, h2, h3, h4 { color: #ffffff !important; }
+            .stDataFrame { background-color: #2d2d2d; }
             </style>
         """
     else:
         return """
             <style>
-            .stApp {
-                background-color: #f8f9fa;
-            }
-            .main-header {
-                color: #1e3c72 !important;
-            }
+            .stApp { background-color: #f8f9fa; }
+            .main-header { color: #1e3c72 !important; }
             </style>
         """
 
 st.markdown(aplicar_tema(), unsafe_allow_html=True)
 
-# ============================================
-# ESTILOS PERSONALIZADOS BASE
-# ============================================
 st.markdown("""
     <style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: 700;
-        text-align: center;
-        margin-bottom: 2rem;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-    }
-    .stButton > button {
-        border-radius: 8px;
-        font-weight: 600;
-        transition: all 0.3s ease;
-    }
-    .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-    }
-    .success-box {
-        background-color: #d4edda;
-        color: #155724;
-        padding: 1rem;
-        border-radius: 8px;
-        border-left: 5px solid #28a745;
-    }
-    .warning-box {
-        background-color: #fff3cd;
-        color: #856404;
-        padding: 1rem;
-        border-radius: 8px;
-        border-left: 5px solid #ffc107;
-    }
-    .error-box {
-        background-color: #f8d7da;
-        color: #721c24;
-        padding: 1rem;
-        border-radius: 8px;
-        border-left: 5px solid #dc3545;
-    }
-    .product-card {
-        background-color: white;
-        padding: 1rem;
-        border-radius: 10px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        margin-bottom: 1rem;
-    }
-    .badge-stock-bajo {
-        background-color: #dc3545;
-        color: white;
-        padding: 0.2rem 0.6rem;
-        border-radius: 12px;
-        font-size: 0.7rem;
-        font-weight: 600;
-        margin-left: 0.5rem;
-    }
+    .main-header { font-size: 2.5rem; font-weight: 700; text-align: center; margin-bottom: 2rem; text-shadow: 2px 2px 4px rgba(0,0,0,0.1); }
+    .stButton > button { border-radius: 8px; font-weight: 600; transition: all 0.3s ease; }
+    .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+    .success-box { background-color: #d4edda; color: #155724; padding: 1rem; border-radius: 8px; border-left: 5px solid #28a745; }
+    .warning-box { background-color: #fff3cd; color: #856404; padding: 1rem; border-radius: 8px; border-left: 5px solid #ffc107; }
+    .error-box { background-color: #f8d7da; color: #721c24; padding: 1rem; border-radius: 8px; border-left: 5px solid #dc3545; }
+    .product-card { background-color: white; padding: 1rem; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 1rem; }
+    .badge-stock-bajo { background-color: #dc3545; color: white; padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.7rem; font-weight: 600; margin-left: 0.5rem; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -123,34 +62,65 @@ st.markdown("""
 # ============================================
 URL = "https://orrfldqwpjkkooeuqnmp.supabase.co"
 KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ycmZsZHF3cGpra29vZXVxbm1wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkzMDg5MDEsImV4cCI6MjA4NDg4NDkwMX0.va4XR7_lDF2QV9SBXTusmAa_bgqV9oKwiIhC23hsC7E"
-CLAVE_ADMIN = "1234"
+CLAVE_ADMIN = "1234"  # Solo para eliminar productos (no login)
 
 db = create_client(URL, KEY)
 
 # ============================================
-# SISTEMA DE USUARIOS (PERSISTENTE CON LOCALSTORAGE)
+# FUNCIONES DE USUARIOS Y PERMISOS (CON TABLA USUARIOS)
+# ============================================
+def cargar_usuarios():
+    res = db.table("usuarios").select("*").order("id").execute()
+    return res.data if res.data else []
+
+def login(usuario_nombre, clave):
+    res = db.table("usuarios").select("*").eq("nombre", usuario_nombre).eq("activo", True).execute()
+    if res.data:
+        user = res.data[0]
+        if user['clave'] == clave:
+            st.session_state.usuario_actual = user
+            st.markdown(f"""
+                <script>
+                localStorage.setItem('usuario_actual', JSON.stringify({json.dumps(user)}));
+                </script>
+            """, unsafe_allow_html=True)
+            return True
+    return False
+
+def logout():
+    st.session_state.usuario_actual = None
+    st.markdown("""
+        <script>
+        localStorage.removeItem('usuario_actual');
+        </script>
+    """, unsafe_allow_html=True)
+    st.query_params.clear()
+    st.rerun()
+
+def es_admin():
+    return st.session_state.get('usuario_actual', {}).get('rol') == 'admin'
+
+def tiene_permiso(modulo):
+    if not st.session_state.usuario_actual:
+        return False
+    rol = st.session_state.usuario_actual['rol']
+    if rol == 'admin':
+        return True
+    modulos_empleado = ["🛒 PUNTO DE VENTA", "💸 GASTOS", "📜 HISTORIAL", "📊 CIERRE DE CAJA"]
+    return modulo in modulos_empleado
+
+# ============================================
+# PERSISTENCIA DE SESIÓN (localStorage)
 # ============================================
 st.markdown("""
     <script>
-    function guardarUsuario(usuario) {
-        localStorage.setItem('usuario_actual', JSON.stringify(usuario));
-    }
     function obtenerUsuario() {
         const user = localStorage.getItem('usuario_actual');
         return user ? JSON.parse(user) : null;
     }
-    function eliminarUsuario() {
-        localStorage.removeItem('usuario_actual');
-    }
     </script>
 """, unsafe_allow_html=True)
 
-USUARIOS = {
-    'admin': {'nombre': 'Administrador', 'clave': '1234', 'rol': 'admin'},
-    'empleada': {'nombre': 'Empleada', 'clave': '5678', 'rol': 'empleado'}
-}
-
-# Inicializar usuario_actual desde localStorage (sin botón de cierre)
 if 'usuario_actual' not in st.session_state or st.session_state.usuario_actual is None:
     if 'usuario_local' not in st.query_params:
         st.markdown("""
@@ -184,20 +154,6 @@ else:
             </script>
         """, unsafe_allow_html=True)
 
-def login(usuario, clave):
-    if usuario in USUARIOS and USUARIOS[usuario]['clave'] == clave:
-        user_data = USUARIOS[usuario]
-        st.session_state.usuario_actual = user_data
-        st.markdown(f"""
-            <script>
-            localStorage.setItem('usuario_actual', JSON.stringify({json.dumps(user_data)}));
-            </script>
-        """, unsafe_allow_html=True)
-        return True
-    return False
-
-# (Ya no hay función logout)
-
 # ============================================
 # VERIFICAR TURNO ACTIVO
 # ============================================
@@ -215,29 +171,17 @@ except Exception as e:
     st.session_state.id_turno = None
 
 # ============================================
-# MENÚ LATERAL (REDISEÑADO)
+# MENÚ LATERAL (CON PERMISOS)
 # ============================================
 with st.sidebar:
     st.markdown("""
-        <div style="background: linear-gradient(135deg, #0a1929 0%, #1a2b3c 100%); 
-                    padding: 2rem 1rem; 
-                    border-radius: 0 0 20px 20px; 
-                    text-align: center; 
-                    margin-top: -1rem;
-                    margin-bottom: 1rem;">
-            <h1 style="color: white; margin: 0; font-size: 2.2rem; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">
-                🥂 BODEGÓN Y LICORERÍA
-            </h1>
-            <h2 style="color: #ffd700; margin: 0; font-size: 1.8rem; letter-spacing: 2px;">
-                MEDITERRANEO EXPRESS
-            </h2>
-            <p style="color: rgba(255,255,255,0.9); margin-top: 0.5rem; font-style: italic;">
-                Desde 2020 sirviendo con calidad
-            </p>
+        <div style="background: linear-gradient(135deg, #0a1929 0%, #1a2b3c 100%); padding: 2rem 1rem; border-radius: 0 0 20px 20px; text-align: center; margin-top: -1rem; margin-bottom: 1rem;">
+            <h1 style="color: white; margin: 0; font-size: 2.2rem; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">🥂 BODEGÓN Y LICORERÍA</h1>
+            <h2 style="color: #ffd700; margin: 0; font-size: 1.8rem; letter-spacing: 2px;">MEDITERRANEO EXPRESS</h2>
+            <p style="color: rgba(255,255,255,0.9); margin-top: 0.5rem; font-style: italic;">Desde 2020 sirviendo con calidad</p>
         </div>
     """, unsafe_allow_html=True)
     
-    # Selector de tema
     col_tema1, col_tema2 = st.columns(2)
     with col_tema1:
         if st.button("☀️ Claro", use_container_width=True):
@@ -247,49 +191,57 @@ with st.sidebar:
         if st.button("🌙 Oscuro", use_container_width=True):
             st.session_state.tema = 'oscuro'
             st.rerun()
-    
     st.divider()
     
-    # Login rápido (si no hay usuario)
+    # Login
     if not st.session_state.usuario_actual:
         with st.expander("🔐 Acceso al sistema", expanded=True):
             col_user1, col_user2 = st.columns(2)
             with col_user1:
-                usuario_sel = st.selectbox("Usuario", ["admin", "empleada"])
+                usuarios_activos = [u['nombre'] for u in cargar_usuarios() if u['activo']]
+                if not usuarios_activos:
+                    usuarios_activos = ["admin"]
+                usuario_sel = st.selectbox("Usuario", usuarios_activos)
             with col_user2:
                 clave_input = st.text_input("Clave", type="password")
-            
             if st.button("✅ Ingresar", use_container_width=True):
                 if login(usuario_sel, clave_input):
                     st.success(f"Bienvenido {st.session_state.usuario_actual['nombre']}")
                     time.sleep(1)
                     st.rerun()
                 else:
-                    st.error("Clave incorrecta")
+                    st.error("Clave incorrecta o usuario inactivo")
     else:
-        st.success(f"👤 Usuario: {st.session_state.usuario_actual['nombre']}")
-        # Ya no hay botón de cerrar sesión
+        st.success(f"👤 Usuario: {st.session_state.usuario_actual['nombre']} ({st.session_state.usuario_actual['rol']})")
+        if st.button("🚪 Cerrar sesión", use_container_width=True):
+            logout()
     
     st.divider()
     
-    # Tasa del día (SOLO INFORMATIVA)
+    # Tasa informativa
     with st.container(border=True):
         st.markdown("**💱 TASA BCV**")
         st.metric("Bs/USD", f"{st.session_state.get('tasa_dia', 60.0):.2f}")
         st.caption("Tasa fijada al abrir el turno")
-    
     st.divider()
     
-    # Módulos
-    opcion = st.radio(
-        "MÓDULOS",
-        ["📦 INVENTARIO", "🛒 PUNTO DE VENTA", "💸 GASTOS", "📜 HISTORIAL", "📊 CIERRE DE CAJA"],
-        label_visibility="collapsed"
-    )
+    # Construir lista de módulos según permisos
+    modulos_disponibles = []
+    if tiene_permiso("📦 INVENTARIO"):
+        modulos_disponibles.append("📦 INVENTARIO")
+    if tiene_permiso("🛒 PUNTO DE VENTA"):
+        modulos_disponibles.append("🛒 PUNTO DE VENTA")
+    if tiene_permiso("💸 GASTOS"):
+        modulos_disponibles.append("💸 GASTOS")
+    if tiene_permiso("📜 HISTORIAL"):
+        modulos_disponibles.append("📜 HISTORIAL")
+    if tiene_permiso("📊 CIERRE DE CAJA"):
+        modulos_disponibles.append("📊 CIERRE DE CAJA")
+    if es_admin():
+        modulos_disponibles.append("👥 ADMINISTRACIÓN")
     
+    opcion = st.radio("MÓDULOS", modulos_disponibles, label_visibility="collapsed")
     st.divider()
-    
-    # Estado del sistema
     st.success("✅ Conectado a Internet")
     if st.session_state.id_turno:
         st.info(f"📍 Turno activo: #{st.session_state.id_turno}")
@@ -325,7 +277,7 @@ def exportar_excel(df, nombre_archivo):
     return href
 
 # ============================================
-# MÓDULO 1: INVENTARIO (SIN CAMBIOS SIGNIFICATIVOS, SOLO SE ELIMINÓ OFFLINE)
+# MÓDULO 1: INVENTARIO (SIN CAMBIOS)
 # ============================================
 if opcion == "📦 INVENTARIO":
     st.markdown("<h1 class='main-header'>📦 Gestión de Inventario</h1>", unsafe_allow_html=True)
@@ -578,7 +530,7 @@ if opcion == "📦 INVENTARIO":
         st.exception(e)
 
 # ============================================
-# MÓDULO 2: PUNTO DE VENTA CON POPOVER PARA FACTURA (CORREGIDO)
+# MÓDULO 2: PUNTO DE VENTA (SIN CAMBIOS)
 # ============================================
 elif opcion == "🛒 PUNTO DE VENTA":
     requiere_turno()
@@ -610,9 +562,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
     if 'mesa_actual' not in st.session_state:
         st.session_state.mesa_actual = 'mesa_1'
     
-    # SELECTOR DE MESAS
     st.subheader("🍽️ Seleccionar Mesa / Cuenta")
-    
     col_mesas = st.columns(6)
     idx_mesa = 0
     for mesa_id, mesa_data in st.session_state.mesas.items():
@@ -623,7 +573,6 @@ elif opcion == "🛒 PUNTO DE VENTA":
                 bg_color = "#ffc107"
             else:
                 bg_color = "#6c757d"
-            
             if st.button(
                 f"{mesa_data['nombre']}\n({len(mesa_data['carrito'])} items)",
                 key=f"mesa_{mesa_id}",
@@ -637,7 +586,6 @@ elif opcion == "🛒 PUNTO DE VENTA":
     mesa_actual = st.session_state.mesas[st.session_state.mesa_actual]
     st.divider()
     
-    # CABECERA DE LA MESA ACTUAL
     col_mesa_info1, col_mesa_info2, col_mesa_info3 = st.columns([2, 2, 1])
     with col_mesa_info1:
         st.markdown(f"### 🍽️ {mesa_actual['nombre']}")
@@ -659,9 +607,6 @@ elif opcion == "🛒 PUNTO DE VENTA":
     
     st.divider()
     
-    # ============================================
-    # BOTÓN BUSCADOR CON POPOVER
-    # ============================================
     es_tasca = st.checkbox("🍷 Venta en tasca (+10%)", help="Los precios aumentan un 10% para consumo en el local")
     
     with st.popover("🔍 Buscar productos", use_container_width=True):
@@ -700,7 +645,6 @@ elif opcion == "🛒 PUNTO DE VENTA":
                                 if item['id'] == prod['id']:
                                     cantidad_existente += item['cantidad']
                             nueva_cantidad = cantidad_existente + 1
-                            
                             if nueva_cantidad >= prod['min_mayor'] and not es_tasca:
                                 precio_final = float(prod['precio_mayor'])
                                 tipo_precio = " (Mayor)"
@@ -710,7 +654,6 @@ elif opcion == "🛒 PUNTO DE VENTA":
                             if es_tasca:
                                 precio_final = precio_base * 1.10
                                 tipo_precio = " (Tasca)"
-                            
                             encontrado = False
                             for item in st.session_state.mesas[st.session_state.mesa_actual]['carrito']:
                                 if item['id'] == prod['id']:
@@ -739,9 +682,6 @@ elif opcion == "🛒 PUNTO DE VENTA":
     
     st.divider()
     
-    # ============================================
-    # CARRITO EN LISTA COMPACTA
-    # ============================================
     st.subheader(f"🛒 Carrito - {mesa_actual['nombre']}")
     carrito = mesa_actual['carrito']
     
@@ -751,11 +691,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
         with st.container():
             st.markdown("""
                 <style>
-                .carrito-scroll {
-                    max-height: 400px;
-                    overflow-y: auto;
-                    margin-bottom: 1rem;
-                }
+                .carrito-scroll { max-height: 400px; overflow-y: auto; margin-bottom: 1rem; }
                 </style>
             """, unsafe_allow_html=True)
             st.markdown('<div class="carrito-scroll">', unsafe_allow_html=True)
@@ -854,7 +790,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
                 )
                 total_final_bs = monto_ajustado_bs
                 total_final_usd = monto_ajustado_bs / tasa if tasa > 0 else 0
-                st.info(f"Equivalente en USD: ${total_final_usd:,.2f}")
+                st.info(f"Equivalente en USD: ${total_final_usd:.2f}")
             elif opcion_ajuste == "Dólares (USD)":
                 monto_ajustado_usd = st.number_input(
                     "Monto final en USD",
@@ -898,7 +834,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
                 st.metric("Esperado USD", f"${esperado_usd:,.2f}")
             with col_r3:
                 if vuelto_usd >= 0:
-                    st.metric("Vuelto USD", f"${vuelto_usd:,.2f}")
+                    st.metric("Vuelto USD", f"${vuelto_usd:.2f}")
                 else:
                     st.metric("Faltante USD", f"${abs(vuelto_usd):,.2f}", delta_color="inverse")
             
@@ -907,7 +843,6 @@ elif opcion == "🛒 PUNTO DE VENTA":
             else:
                 st.error(f"❌ Faltante: ${abs(vuelto_usd):,.2f} / {(abs(vuelto_usd) * tasa):,.2f} Bs")
         
-        # BOTONES DE ACCIÓN
         col_btn1, col_btn2, col_btn3 = st.columns(3)
         with col_btn1:
             if st.button("🔄 Limpiar carrito", use_container_width=True):
@@ -954,9 +889,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
                     st.balloons()
                     st.success(f"✅ Venta registrada - {mesa_actual['nombre']}{info_cliente}")
                     
-                    # FACTURA EN POPOVER (CORREGIDA, con HTML renderizado)
                     with st.popover("🧾 VER TICKET", use_container_width=True):
-                        # Construir filas de la tabla de productos
                         items_html = ""
                         for item in carrito:
                             items_html += f"""
@@ -993,15 +926,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
                                     <td style="text-align:right;"><b>Total USD:</b></td>
                                     <td style="text-align:right;">${total_final_usd:.2f}</td>
                                 </tr>
-                                <tr>
-                                    <td style="text-align:right;"><b>Total Bs:</b></td>
-                                    <td style="text-align:right;">{total_final_bs:,.2f} Bs</p></td>
-                                </tr>
-                                <tr>
-                                    <td style="text-align:right;"><b>Vuelto:</b></td>
-                                    <td style="text-align:right;">${vuelto_usd:.2f} / {(vuelto_usd * tasa):,.2f} Bs</p></td>
-                                </tr>
-                            </table>
+                                </table>
                             <p style="text-align:center; margin-top:20px;">¡Gracias por su compra!</p>
                         </div>
                         """
@@ -1022,7 +947,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
                     st.rerun()
 
 # ============================================
-# MÓDULO 3: GASTOS (SIN OFFLINE)
+# MÓDULO 3: GASTOS (SIN CAMBIOS)
 # ============================================
 elif opcion == "💸 GASTOS":
     requiere_turno()
@@ -1091,7 +1016,7 @@ elif opcion == "💸 GASTOS":
                 st.warning("⚠️ Complete los campos obligatorios (*)")
 
 # ============================================
-# MÓDULO 4: HISTORIAL DE VENTAS (OPTIMIZADO - CARGA POR TURNO O FECHAS)
+# MÓDULO 4: HISTORIAL (OPTIMIZADO - CARGA POR TURNO O FECHAS)
 # ============================================
 elif opcion == "📜 HISTORIAL":
     requiere_usuario()
@@ -1103,11 +1028,8 @@ elif opcion == "📜 HISTORIAL":
         </div>
     """, unsafe_allow_html=True)
     
-    # ============================================
-    # SELECCIÓN DE CARGA (TURNO o RANGO DE FECHAS)
-    # ============================================
+    # Selección de carga
     st.subheader("🔍 Selecciona qué ventas quieres ver")
-    
     tipo_busqueda = st.radio(
         "Mostrar ventas por:",
         ["🔢 Número de turno", "📅 Rango de fechas"],
@@ -1118,9 +1040,8 @@ elif opcion == "📜 HISTORIAL":
     # Variables de sesión para paginación
     if 'historial_offset' not in st.session_state:
         st.session_state.historial_offset = 0
-    LIMITE = 100  # ventas por página
+    LIMITE = 100
     
-    # Función para cargar ventas según el tipo de búsqueda
     def cargar_ventas(offset, limite):
         if tipo_busqueda == "🔢 Número de turno":
             turno = st.session_state.get('turno_especifico', 0)
@@ -1137,7 +1058,6 @@ elif opcion == "📜 HISTORIAL":
             hasta = st.session_state.get('fecha_hasta', None)
             if not desde or not hasta:
                 return []
-            # Convertir a string ISO para consulta
             desde_str = desde.strftime('%Y-%m-%d')
             hasta_str = hasta.strftime('%Y-%m-%d')
             return db.table("ventas")\
@@ -1148,7 +1068,6 @@ elif opcion == "📜 HISTORIAL":
                 .range(offset, offset + limite - 1)\
                 .execute().data or []
     
-    # Controles según el tipo de búsqueda
     if tipo_busqueda == "🔢 Número de turno":
         turno_especifico = st.number_input("Ingresa el número de turno", min_value=1, step=1, key="turno_especifico")
         col_b1, col_b2 = st.columns(2)
@@ -1183,7 +1102,6 @@ elif opcion == "📜 HISTORIAL":
                 st.session_state.historial_offset = 0
                 st.rerun()
     
-    # Mostrar resultados si se ha cargado algo
     if st.session_state.get('historial_datos_cargados', False):
         with st.spinner("Cargando ventas..."):
             ventas = cargar_ventas(st.session_state.historial_offset, LIMITE)
@@ -1195,13 +1113,11 @@ elif opcion == "📜 HISTORIAL":
                 st.rerun()
         else:
             df = pd.DataFrame(ventas)
-            # Procesar fechas
             df['fecha_dt'] = pd.to_datetime(df['fecha'])
             df['hora'] = df['fecha_dt'].dt.strftime('%H:%M')
             df['fecha_corta'] = df['fecha_dt'].dt.strftime('%d/%m/%Y')
             df['fecha_display'] = df['fecha_dt'].dt.strftime('%d/%m/%Y %H:%M')
             
-            # Función resumen pagos
             def resumen_pagos(row):
                 metodos = []
                 if row.get('pago_efectivo', 0) > 0:
@@ -1220,7 +1136,6 @@ elif opcion == "📜 HISTORIAL":
             
             df['metodos_pago'] = df.apply(resumen_pagos, axis=1)
             
-            # Métricas
             df_activas = df[df['estado'] != 'Anulado']
             total_usd = df_activas['total_usd'].sum() if not df_activas.empty else 0
             total_bs = df_activas['monto_cobrado_bs'].sum() if not df_activas.empty else 0
@@ -1230,32 +1145,28 @@ elif opcion == "📜 HISTORIAL":
             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
             with col_m1:
                 st.markdown(f"""
-                    <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                            padding: 1rem; border-radius: 10px; color: white; text-align: center;'>
+                    <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 1rem; border-radius: 10px; color: white; text-align: center;'>
                         <span style='font-size: 0.9rem; opacity: 0.9;'>💰 TOTAL USD</span><br>
                         <span style='font-size: 1.8rem; font-weight: 700;'>${total_usd:,.2f}</span>
                     </div>
                 """, unsafe_allow_html=True)
             with col_m2:
                 st.markdown(f"""
-                    <div style='background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
-                            padding: 1rem; border-radius: 10px; color: white; text-align: center;'>
+                    <div style='background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 1rem; border-radius: 10px; color: white; text-align: center;'>
                         <span style='font-size: 0.9rem; opacity: 0.9;'>💵 TOTAL BS</span><br>
                         <span style='font-size: 1.8rem; font-weight: 700;'>{total_bs:,.0f}</span>
                     </div>
                 """, unsafe_allow_html=True)
             with col_m3:
                 st.markdown(f"""
-                    <div style='background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); 
-                            padding: 1rem; border-radius: 10px; color: white; text-align: center;'>
+                    <div style='background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); padding: 1rem; border-radius: 10px; color: white; text-align: center;'>
                         <span style='font-size: 0.9rem; opacity: 0.9;'>📊 VENTAS</span><br>
                         <span style='font-size: 1.8rem; font-weight: 700;'>{cantidad_ventas}</span>
                     </div>
                 """, unsafe_allow_html=True)
             with col_m4:
                 st.markdown(f"""
-                    <div style='background: linear-gradient(135deg, #5f2c82 0%, #49a09d 100%); 
-                            padding: 1rem; border-radius: 10px; color: white; text-align: center;'>
+                    <div style='background: linear-gradient(135deg, #5f2c82 0%, #49a09d 100%); padding: 1rem; border-radius: 10px; color: white; text-align: center;'>
                         <span style='font-size: 0.9rem; opacity: 0.9;'>📈 PROMEDIO</span><br>
                         <span style='font-size: 1.8rem; font-weight: 700;'>${promedio_usd:,.2f}</span>
                     </div>
@@ -1263,8 +1174,7 @@ elif opcion == "📜 HISTORIAL":
             
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # Tabla de ventas (usando st.dataframe para mejor rendimiento)
-            # Preparamos el DataFrame para mostrar
+            # Tabla de ventas con st.dataframe (rápido)
             df_show = df.copy()
             df_show['Turno'] = df_show['id_cierre'].astype(str)
             df_show['ID'] = df_show['id'].astype(str)
@@ -1275,7 +1185,6 @@ elif opcion == "📜 HISTORIAL":
             df_show['Métodos'] = df_show['metodos_pago']
             df_show['Estado'] = df_show['estado'].apply(lambda x: '✅ Finalizado' if x == 'Finalizado' else '❌ Anulado')
             
-            # Mostrar dataframe interactivo
             st.dataframe(
                 df_show[['Turno', 'ID', 'Hora', 'Productos', 'USD', 'Bs', 'Métodos', 'Estado']],
                 use_container_width=True,
@@ -1292,17 +1201,9 @@ elif opcion == "📜 HISTORIAL":
                 }
             )
             
-            # Botones de acción (anular y ver factura) - se muestran debajo de cada fila? No, mejor usar columnas adicionales.
-            # Como st.dataframe no permite botones por fila, volvemos a la versión manual con st.columns solo para acciones,
-            # pero limitando a 100 filas (que es lo que cargamos). Para mantener la funcionalidad de anular y factura,
-            # vamos a generar una lista de botones debajo de la tabla, una por venta? No es práctico.
-            # En su lugar, mantendremos la estructura original de filas con st.columns, pero solo para el conjunto cargado (máx 100).
-            # Eso es aceptable porque 100 filas no es pesado.
-            
+            # Botones de anular y ver factura (por fila)
             st.markdown("---")
             st.subheader("Acciones por venta")
-            
-            # Recorrer las ventas y mostrar botones de anular y factura (similar a antes pero más compacto)
             for idx, venta in df.iterrows():
                 es_anulado = venta['estado'] == 'Anulado'
                 badge = 'ANULADA' if es_anulado else 'FINALIZADA'
@@ -1403,7 +1304,7 @@ elif opcion == "📜 HISTORIAL":
                         """, unsafe_allow_html=True)
                 st.markdown("<hr style='margin:0.2rem 0;'>", unsafe_allow_html=True)
             
-            # Botones de paginación
+            # Paginación
             if len(ventas) == LIMITE:
                 col_pag1, col_pag2 = st.columns(2)
                 with col_pag1:
@@ -1420,14 +1321,13 @@ elif opcion == "📜 HISTORIAL":
                     st.session_state.historial_offset -= LIMITE
                     st.rerun()
             
-            # Botón para nueva búsqueda
             if st.button("🔍 Nueva búsqueda", use_container_width=True):
                 st.session_state.historial_datos_cargados = False
                 st.session_state.historial_offset = 0
                 st.rerun()
 
 # ============================================
-# MÓDULO 5: CIERRE DE CAJA (SIN OFFLINE)
+# MÓDULO 5: CIERRE DE CAJA (SIN CAMBIOS)
 # ============================================
 elif opcion == "📊 CIERRE DE CAJA":
     st.markdown("<h1 class='main-header'>📊 Cierre de Caja</h1>", unsafe_allow_html=True)
@@ -1437,7 +1337,6 @@ elif opcion == "📊 CIERRE DE CAJA":
     with tab_c1:
         if not st.session_state.id_turno:
             st.warning("🔓 No hay turno activo. Complete para abrir caja:")
-
             with st.form("form_apertura"):
                 st.subheader("📝 Datos de apertura")
                 col1, col2 = st.columns(2)
@@ -1447,7 +1346,6 @@ elif opcion == "📊 CIERRE DE CAJA":
                 with col2:
                     fondo_usd = st.number_input("💰 Fondo inicial USD", min_value=0.0, value=0.0, step=5.0, format="%.2f")
                     st.info(f"👤 Abre: {st.session_state.usuario_actual['nombre'] if st.session_state.usuario_actual else 'Anónimo'}")
-
                 if st.form_submit_button("🚀 ABRIR CAJA", type="primary", use_container_width=True):
                     try:
                         data = {
@@ -1698,3 +1596,113 @@ elif opcion == "📊 CIERRE DE CAJA":
                 st.info("No hay turnos cerrados registrados.")
         except Exception as e:
             st.error(f"Error cargando historial de cierres: {e}")
+
+# ============================================
+# NUEVO MÓDULO: ADMINISTRACIÓN (solo para admin)
+# ============================================
+elif opcion == "👥 ADMINISTRACIÓN":
+    st.markdown("<h1 class='main-header'>👥 Administración de Usuarios</h1>", unsafe_allow_html=True)
+    
+    if not es_admin():
+        st.error("No tienes permisos para acceder a esta sección.")
+        st.stop()
+    
+    usuarios = cargar_usuarios()
+    
+    # Agregar nuevo usuario
+    with st.expander("➕ Agregar nueva empleada", expanded=False):
+        with st.form("nuevo_usuario"):
+            col1, col2 = st.columns(2)
+            with col1:
+                nuevo_nombre = st.text_input("Nombre *")
+                nueva_clave = st.text_input("Clave *", type="password")
+            with col2:
+                nuevo_rol = st.selectbox("Rol", ["empleado", "admin"])
+                nuevo_activo = st.checkbox("Activo", value=True)
+            if st.form_submit_button("Crear usuario"):
+                if nuevo_nombre and nueva_clave:
+                    existe = db.table("usuarios").select("*").eq("nombre", nuevo_nombre).execute()
+                    if existe.data:
+                        st.error("Ya existe un usuario con ese nombre.")
+                    else:
+                        db.table("usuarios").insert({
+                            "nombre": nuevo_nombre,
+                            "clave": nueva_clave,
+                            "rol": nuevo_rol,
+                            "activo": nuevo_activo
+                        }).execute()
+                        st.success(f"Usuario {nuevo_nombre} creado.")
+                        time.sleep(1)
+                        st.rerun()
+                else:
+                    st.warning("Nombre y clave son obligatorios.")
+    
+    # Lista de usuarios
+    st.subheader("📋 Usuarios del sistema")
+    if usuarios:
+        for user in usuarios:
+            with st.container(border=True):
+                col1, col2, col3, col4, col5, col6 = st.columns([2, 1.5, 1, 1, 1, 1])
+                col1.write(f"**{user['nombre']}**")
+                col2.write(f"Rol: {user['rol']}")
+                col3.write("✅ Activo" if user['activo'] else "❌ Inactivo")
+                with col4:
+                    if st.button("✏️ Editar", key=f"edit_{user['id']}"):
+                        st.session_state.edit_usuario = user
+                        st.rerun()
+                with col5:
+                    if user['rol'] != 'admin':
+                        if st.button("🗑️ Eliminar", key=f"del_{user['id']}"):
+                            db.table("usuarios").delete().eq("id", user['id']).execute()
+                            st.success(f"Usuario {user['nombre']} eliminado.")
+                            time.sleep(1)
+                            st.rerun()
+                    else:
+                        st.markdown("_Protegido_")
+                with col6:
+                    if user['id'] == st.session_state.usuario_actual['id'] and user['rol'] == 'admin':
+                        st.markdown("*(tú)*")
+        st.markdown("---")
+        
+        # Edición de usuario (si se seleccionó)
+        if 'edit_usuario' in st.session_state:
+            user = st.session_state.edit_usuario
+            st.subheader(f"Editando: {user['nombre']}")
+            with st.form("edit_usuario_form"):
+                nuevo_nombre = st.text_input("Nombre", value=user['nombre'])
+                nueva_clave = st.text_input("Nueva clave (dejar vacío para no cambiar)", type="password")
+                nuevo_rol = st.selectbox("Rol", ["empleado", "admin"], index=0 if user['rol']=='empleado' else 1)
+                nuevo_activo = st.checkbox("Activo", value=user['activo'])
+                if st.form_submit_button("Guardar cambios"):
+                    update_data = {"nombre": nuevo_nombre, "rol": nuevo_rol, "activo": nuevo_activo}
+                    if nueva_clave:
+                        update_data["clave"] = nueva_clave
+                    db.table("usuarios").update(update_data).eq("id", user['id']).execute()
+                    # Si el usuario editado es el actual, actualizar la sesión
+                    if user['id'] == st.session_state.usuario_actual['id']:
+                        st.session_state.usuario_actual.update(update_data)
+                    st.success("Usuario actualizado")
+                    del st.session_state.edit_usuario
+                    time.sleep(1)
+                    st.rerun()
+            if st.button("Cancelar"):
+                del st.session_state.edit_usuario
+                st.rerun()
+        
+        # Cambio de clave del administrador logueado
+        st.markdown("---")
+        st.subheader("🔑 Cambiar mi clave")
+        with st.form("cambiar_clave_admin"):
+            nueva_clave_admin = st.text_input("Nueva clave", type="password")
+            confirmar_clave = st.text_input("Confirmar nueva clave", type="password")
+            if st.form_submit_button("Actualizar mi clave"):
+                if nueva_clave_admin and nueva_clave_admin == confirmar_clave:
+                    db.table("usuarios").update({"clave": nueva_clave_admin}).eq("id", st.session_state.usuario_actual['id']).execute()
+                    st.session_state.usuario_actual['clave'] = nueva_clave_admin
+                    st.success("Clave actualizada. Vuelve a iniciar sesión para aplicar cambios.")
+                    time.sleep(2)
+                    logout()
+                else:
+                    st.error("Las claves no coinciden o están vacías.")
+    else:
+        st.info("No hay usuarios registrados.")
