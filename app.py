@@ -60,7 +60,7 @@ st.markdown("""
 # ============================================
 # CONEXIÓN A SUPABASE (cambiar por tus secretos)
 # ============================================
-URL = "https://dhkunafosiyvofunehsd.supabase.co/rest/v1/"
+URL = "https://dhkunafosiyvofunehsd.supabase.co"
 KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRoa3VuYWZvc2l5dm9mdW5laHNkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0ODkwMDMsImV4cCI6MjA5MzA2NTAwM30.4XuCCQagKXY-nBEngrBg3gJSL4HFIuvZK6AjTilfHUM"
 CLAVE_ADMIN = "1234"  # Solo para eliminar productos
 
