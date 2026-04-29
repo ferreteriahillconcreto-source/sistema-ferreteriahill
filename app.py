@@ -60,8 +60,8 @@ st.markdown("""
 # ============================================
 # CONEXIÓN A SUPABASE (cambiar por tus secretos)
 # ============================================
-URL = "https://orrfldqwpjkkooeuqnmp.supabase.co"
-KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ycmZsZHF3cGpra29vZXVxbm1wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkzMDg5MDEsImV4cCI6MjA4NDg4NDkwMX0.va4XR7_lDF2QV9SBXTusmAa_bgqV9oKwiIhC23hsC7E"
+URL = "https://dhkunafosiyvofunehsd.supabase.co/rest/v1/"
+KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRoa3VuYWZvc2l5dm9mdW5laHNkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0ODkwMDMsImV4cCI6MjA5MzA2NTAwM30.4XuCCQagKXY-nBEngrBg3gJSL4HFIuvZK6AjTilfHUM"
 CLAVE_ADMIN = "1234"  # Solo para eliminar productos
 
 db = create_client(URL, KEY)
