@@ -341,11 +341,13 @@ if opcion == "📦 INVENTARIO":
                         st.success("✅ No hay productos con stock bajo")
                 
                 def colorear_stock(val):
-                    if val < 5:
-                        return 'color: red; font-weight: bold; background-color: #ffe6e6'
+                    if val < 0:
+                        return 'color: orange; font-weight: bold; background-color: #fff3cd'  # stock negativo (naranja)
+                    elif val < 5:
+                        return 'color: red; font-weight: bold; background-color: #ffe6e6'   # stock bajo
                     elif val < 10:
-                        return 'color: orange; font-weight: bold;'
-                    return 'color: green; font-weight: bold;'
+                        return 'color: orange; font-weight: bold;'                           # stock medio
+                    return 'color: green; font-weight: bold;'                               # stock suficiente
                 
                 columnas_mostrar = ['nombre', 'categoria', 'unidad_medida', 'marca', 'proveedor', 'stock', 'costo', 'precio_detal', 'precio_mayor', 'min_mayor']
                 columnas_mostrar = [col for col in columnas_mostrar if col in df_filtrado.columns]
@@ -370,7 +372,8 @@ if opcion == "📦 INVENTARIO":
                                 nueva_unidad = st.selectbox("Unidad de medida", ["unidad", "metro", "kilo", "litro", "galón", "pieza"], index=["unidad","metro","kilo","litro","galón","pieza"].index(prod.get('unidad_medida','unidad')) if prod.get('unidad_medida') in ["unidad","metro","kilo","litro","galón","pieza"] else 0)
                                 nueva_marca = st.text_input("Marca", value=prod.get('marca', ''))
                                 nuevo_proveedor = st.text_input("Proveedor", value=prod.get('proveedor', ''))
-                                nuevo_stock = st.number_input("Stock", value=float(prod['stock']), min_value=0.0, step=0.1, format="%.2f")
+                                # CAMBIO IMPORTANTE: Permitir stock negativo
+                                nuevo_stock = st.number_input("Stock", value=float(prod['stock']), min_value=-9999.0, step=0.1, format="%.2f")
                                 nuevo_costo = st.number_input("Costo $", value=float(prod['costo']), min_value=0.0, step=0.01, format="%.2f")
                                 nuevo_codigo = st.text_input("Código de barras", value=prod.get('codigo_barras', ''))
                             with col_e2:
@@ -431,7 +434,8 @@ if opcion == "📦 INVENTARIO":
                     unidad_medida = st.selectbox("Unidad de medida *", ["unidad", "metro", "kilo", "litro", "galón", "pieza"])
                     marca = st.text_input("Marca (opcional)")
                     proveedor = st.text_input("Proveedor (opcional)")
-                    stock = st.number_input("Stock inicial *", min_value=0.0, step=0.1, format="%.2f")
+                    # CAMBIO: Permitir stock inicial negativo (por si se requiere ajuste)
+                    stock = st.number_input("Stock inicial *", min_value=-9999.0, step=0.1, format="%.2f")
                     costo = st.number_input("Costo $ *", min_value=0.0, step=0.01, format="%.2f")
                     codigo_barras = st.text_input("Código de barras (opcional)")
                 with col_a2:
@@ -441,32 +445,33 @@ if opcion == "📦 INVENTARIO":
                 if st.form_submit_button("📦 Registrar Producto", use_container_width=True):
                     if not nombre:
                         st.error("El nombre es obligatorio")
-                    elif stock < 0 or costo < 0 or precio_detal <= 0:
-                        st.error("Verifique los valores ingresados")
+                    elif costo < 0 or precio_detal <= 0:
+                        st.error("Verifique los valores ingresados (costo y precio detal deben ser positivos)")
                     else:
                         try:
                             existe = db.table("inventario").select("*").eq("nombre", nombre).execute()
                             if existe.data:
                                 st.error(f"Ya existe un producto con el nombre '{nombre}'")
-                                st.stop()
-                            datos_nuevos = {
-                                "nombre": nombre,
-                                "categoria": categoria,
-                                "unidad_medida": unidad_medida,
-                                "marca": marca,
-                                "proveedor": proveedor,
-                                "stock": stock,
-                                "costo": costo,
-                                "precio_detal": precio_detal,
-                                "precio_mayor": precio_mayor,
-                                "min_mayor": min_mayor
-                            }
-                            if codigo_barras:
-                                datos_nuevos["codigo_barras"] = codigo_barras
-                            db.table("inventario").insert(datos_nuevos).execute()
-                            st.success(f"✅ Producto '{nombre}' registrado exitosamente")
-                            time.sleep(1)
-                            st.rerun()
+                                # ya no usamos st.stop() para no romper la ejecución
+                            else:
+                                datos_nuevos = {
+                                    "nombre": nombre,
+                                    "categoria": categoria,
+                                    "unidad_medida": unidad_medida,
+                                    "marca": marca,
+                                    "proveedor": proveedor,
+                                    "stock": stock,
+                                    "costo": costo,
+                                    "precio_detal": precio_detal,
+                                    "precio_mayor": precio_mayor,
+                                    "min_mayor": min_mayor
+                                }
+                                if codigo_barras:
+                                    datos_nuevos["codigo_barras"] = codigo_barras
+                                db.table("inventario").insert(datos_nuevos).execute()
+                                st.success(f"✅ Producto '{nombre}' registrado exitosamente")
+                                time.sleep(1)
+                                st.rerun()
                         except Exception as e:
                             st.error(f"Error al registrar: {e}")
         
@@ -501,13 +506,14 @@ if opcion == "📦 INVENTARIO":
                 df_top = df_temp.nlargest(10, 'valor_total')[['nombre', 'categoria', 'unidad_medida', 'marca', 'stock', 'costo', 'valor_total']]
                 df_top.columns = ['Producto', 'Categoría', 'Unidad', 'Marca', 'Stock', 'Costo unitario', 'Valor total']
                 st.dataframe(df_top, use_container_width=True, hide_index=True)
-                st.subheader("⚠️ Productos con stock bajo (<5)")
-                df_bajo = df[df['stock'] < 5][['nombre', 'categoria', 'unidad_medida', 'marca', 'stock', 'costo']]
-                if not df_bajo.empty:
-                    df_bajo.columns = ['Producto', 'Categoría', 'Unidad', 'Marca', 'Stock', 'Costo unitario']
-                    st.dataframe(df_bajo, use_container_width=True, hide_index=True)
+                st.subheader("⚠️ Productos con stock bajo (<5) o negativo")
+                # Mostrar también los que tienen stock negativo
+                df_bajo_o_negativo = df[(df['stock'] < 5)][['nombre', 'categoria', 'unidad_medida', 'marca', 'stock', 'costo']]
+                if not df_bajo_o_negativo.empty:
+                    df_bajo_o_negativo.columns = ['Producto', 'Categoría', 'Unidad', 'Marca', 'Stock', 'Costo unitario']
+                    st.dataframe(df_bajo_o_negativo, use_container_width=True, hide_index=True)
                 else:
-                    st.success("No hay productos con stock bajo")
+                    st.success("No hay productos con stock bajo ni negativo")
             else:
                 st.info("No hay datos para mostrar estadísticas")
         
