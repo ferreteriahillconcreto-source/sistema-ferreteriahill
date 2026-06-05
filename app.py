@@ -602,84 +602,101 @@ if opcion == "📦 INVENTARIO":
                 st.info("No hay productos para respaldar")
         
         # ==================================================
-        # PESTAÑA 5: IMPORTACIÓN MASIVA (NUEVA)
+        # PESTAÑA 5: IMPORTACIÓN MASIVA (ADAPTADA PARA CRISTAL PLUS)
         # ==================================================
         with tab5:
-            st.subheader("📤 Importación masiva de productos desde Excel")
+            st.subheader("📤 Importación masiva desde Cristal Plus")
             st.markdown("""
-                Puedes importar productos en lote usando un archivo Excel con las siguientes columnas:
-                - **nombre** (obligatorio, texto)
-                - **categoria** (texto, opcional, por defecto "Otros")
-                - **unidad_medida** (texto, opcional, por defecto "unidad")
-                - **marca** (texto)
-                - **proveedor** (texto)
-                - **stock** (número, por defecto 0)
-                - **costo** (número, por defecto 0)
-                - **precio_detal** (número, obligatorio >0)
-                - **precio_mayor** (número, opcional, por defecto igual a detal)
-                - **min_mayor** (entero, por defecto 6)
-                - **codigo_barras** (texto)
-                
-                Puedes descargar una plantilla vacía para completar.
+                **El archivo debe contener estas columnas exactas (nombres en español):**  
+                - `Código` (código de barras)  
+                - `Nombre` (nombre del producto)  
+                - `Departamento` (categoría)  
+                - `Unidad` (unidad de medida: unidad, metro, kilo, litro, galón, pieza)  
+                - `Costo Calculado` (costo en USD)  
+                - `Existencia` (stock)  
+                - `Precio Máximo` (precio de venta detal en USD)  
+
+                Puedes exportar directamente desde Cristal Plus con esos nombres y subir el archivo aquí.
             """)
             col_imp1, col_imp2 = st.columns(2)
             with col_imp1:
-                # Botón descargar plantilla
-                if st.button("📥 Descargar plantilla Excel", use_container_width=True):
-                    plantilla_df = pd.DataFrame({
-                        'nombre': ['Ejemplo Martillo', 'Ejemplo Pintura'],
-                        'categoria': ['Herramientas', 'Pinturas'],
-                        'unidad_medida': ['unidad', 'litro'],
-                        'marca': ['Stanley', 'Montana'],
-                        'proveedor': ['Distribuidora A', 'Distribuidora B'],
-                        'stock': [10, 5.5],
-                        'costo': [5.0, 8.0],
-                        'precio_detal': [15.0, 20.0],
-                        'precio_mayor': [12.0, 18.0],
-                        'min_mayor': [6, 6],
-                        'codigo_barras': ['123456', '789012']
+                # Botón descargar plantilla en formato Cristal
+                if st.button("📥 Descargar plantilla (formato Cristal)", use_container_width=True):
+                    plantilla_cristal = pd.DataFrame({
+                        'Código': ['123456', '789012'],
+                        'Nombre': ['MARTILLO', 'PINTURA BLANCA'],
+                        'Departamento': ['Herramientas', 'Pinturas'],
+                        'Unidad': ['unidad', 'litro'],
+                        'Costo Calculado': [5.0, 8.0],
+                        'Existencia': [10, 5.5],
+                        'Precio Máximo': [15.0, 20.0]
                     })
-                    href = exportar_excel(plantilla_df, "plantilla_importacion_ferreteria")
+                    href = exportar_excel(plantilla_cristal, "plantilla_importacion_cristal")
                     st.markdown(href, unsafe_allow_html=True)
             
-            uploaded_file = st.file_uploader("Selecciona un archivo Excel (.xlsx)", type=['xlsx'])
+            uploaded_file = st.file_uploader("Selecciona el archivo Excel de Cristal Plus (.xlsx)", type=['xlsx'])
             if uploaded_file is not None:
                 try:
                     df_import = pd.read_excel(uploaded_file)
-                    # Validar columnas mínimas
-                    columnas_requeridas = ['nombre', 'precio_detal']
-                    faltan = [c for c in columnas_requeridas if c not in df_import.columns]
+                    
+                    # Validar que tenga las columnas esperadas de Cristal
+                    columnas_cristal = ['Código', 'Nombre', 'Precio Máximo']
+                    faltan = [c for c in columnas_cristal if c not in df_import.columns]
                     if faltan:
-                        st.error(f"El archivo debe contener las columnas: {', '.join(columnas_requeridas)}. Faltan: {faltan}")
+                        st.error(f"El archivo debe contener las columnas: {', '.join(columnas_cristal)}. Faltan: {faltan}")
                     else:
-                        # Asignar valores por defecto
+                        # Renombrar al esquema interno
+                        df_import = df_import.rename(columns={
+                            'Código': 'codigo_barras',
+                            'Nombre': 'nombre',
+                            'Departamento': 'categoria',
+                            'Unidad': 'unidad_medida',
+                            'Costo Calculado': 'costo',
+                            'Existencia': 'stock',
+                            'Precio Máximo': 'precio_detal'
+                        })
+                        
+                        # Asignar valores por defecto para columnas que no vienen
                         df_import['categoria'] = df_import.get('categoria', 'Otros').fillna('Otros')
                         df_import['unidad_medida'] = df_import.get('unidad_medida', 'unidad').fillna('unidad')
-                        df_import['marca'] = df_import.get('marca', '').fillna('')
-                        df_import['proveedor'] = df_import.get('proveedor', '').fillna('')
-                        df_import['stock'] = pd.to_numeric(df_import.get('stock', 0), errors='coerce').fillna(0)
+                        # Validar que unidad_medida esté en la lista permitida, si no, poner 'unidad'
+                        df_import['unidad_medida'] = df_import['unidad_medida'].apply(lambda x: x if x in UNIDADES else 'unidad')
+                        
                         df_import['costo'] = pd.to_numeric(df_import.get('costo', 0), errors='coerce').fillna(0)
+                        df_import['stock'] = pd.to_numeric(df_import.get('stock', 0), errors='coerce').fillna(0)
                         df_import['precio_detal'] = pd.to_numeric(df_import['precio_detal'], errors='coerce')
-                        df_import['precio_mayor'] = pd.to_numeric(df_import.get('precio_mayor', df_import['precio_detal']), errors='coerce').fillna(df_import['precio_detal'])
-                        df_import['min_mayor'] = pd.to_numeric(df_import.get('min_mayor', 6), errors='coerce').fillna(6).astype(int)
-                        df_import['codigo_barras'] = df_import.get('codigo_barras', '').fillna('').astype(str)
-                        # Eliminar filas con nombre vacío o precio_detal inválido
+                        # Si precio_detal es nulo o menor/igual a 0, se rechaza la fila después
+                        df_import['precio_mayor'] = df_import['precio_detal']  # por defecto igual a detal (puede ajustarse después)
+                        df_import['min_mayor'] = 6   # valor por defecto
+                        df_import['marca'] = ''
+                        df_import['proveedor'] = ''
+                        df_import['codigo_barras'] = df_import['codigo_barras'].fillna('').astype(str)
+                        
+                        # Limpiar y validar
                         df_import = df_import.dropna(subset=['nombre', 'precio_detal'])
                         df_import = df_import[df_import['precio_detal'] > 0]
+                        df_import['nombre'] = df_import['nombre'].astype(str).str.upper().str.strip()
+                        
                         if df_import.empty:
-                            st.error("No hay datos válidos para importar (nombre y precio detal positivo requeridos).")
+                            st.error("No hay datos válidos para importar. Asegúrate de que cada fila tenga 'Nombre' y 'Precio Máximo' > 0.")
                         else:
-                            st.success(f"Se encontraron {len(df_import)} productos listos para importar.")
-                            st.dataframe(df_import[['nombre', 'categoria', 'precio_detal', 'stock']], use_container_width=True)
+                            st.success(f"Se encontraron {len(df_import)} productos listos para importar/actualizar.")
+                            st.dataframe(df_import[['nombre', 'categoria', 'unidad_medida', 'precio_detal', 'stock']], use_container_width=True)
+                            
                             if st.button("🚀 Confirmar importación", use_container_width=True):
                                 insertados = 0
                                 actualizados = 0
                                 errores = []
                                 for idx, row in df_import.iterrows():
                                     try:
-                                        nombre = row['nombre'].upper().strip()
-                                        # Verificar si ya existe
-                                        existe = db.table("inventario").select("id").eq("nombre", nombre).execute()
+                                        nombre = row['nombre']
+                                        # Buscar por código de barras (si existe) o por nombre
+                                        existe = None
+                                        if row['codigo_barras'] and row['codigo_barras'] != '':
+                                            existe = db.table("inventario").select("id").eq("codigo_barras", row['codigo_barras']).execute().data
+                                        if not existe:
+                                            existe = db.table("inventario").select("id").eq("nombre", nombre).execute().data
+                                        
                                         datos = {
                                             "nombre": nombre,
                                             "categoria": row['categoria'],
@@ -693,15 +710,14 @@ if opcion == "📦 INVENTARIO":
                                             "min_mayor": int(row['min_mayor']),
                                             "codigo_barras": str(row['codigo_barras'])
                                         }
-                                        if existe.data:
-                                            # Actualizar
-                                            db.table("inventario").update(datos).eq("id", existe.data[0]['id']).execute()
+                                        if existe:
+                                            db.table("inventario").update(datos).eq("id", existe[0]['id']).execute()
                                             actualizados += 1
                                         else:
                                             db.table("inventario").insert(datos).execute()
                                             insertados += 1
                                     except Exception as e:
-                                        errores.append(f"Fila {idx+2}: {str(e)}")
+                                        errores.append(f"Fila {idx+2} ({row['nombre']}): {str(e)[:100]}")
                                 if errores:
                                     st.error(f"Se produjeron errores en {len(errores)} filas. Los primeros: {errores[:3]}")
                                 st.success(f"✅ Importación completada: {insertados} productos nuevos, {actualizados} actualizados.")
