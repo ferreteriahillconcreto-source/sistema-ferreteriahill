@@ -746,7 +746,7 @@ if opcion == "📦 INVENTARIO":
         st.exception(e)
 
 # ============================================
-# MÓDULO 2: PUNTO DE VENTA (FERRETERÍA - DOS CLIENTES, CÓDIGO BARRAS)
+# MÓDULO 2: PUNTO DE VENTA (FERRETERÍA - DOS CLIENTES, CÓDIGO BARRAS + LISTA POR NOMBRE)
 # ============================================
 elif opcion == "🛒 PUNTO DE VENTA":
     requiere_turno()
@@ -810,7 +810,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
     st.divider()
     
     # ============================================
-    # BUSCADOR POR CÓDIGO DE BARRAS (con limpieza automática)
+    # BUSCADOR: CÓDIGO EXACTO (auto-agrega) o NOMBRE (muestra lista)
     # ============================================
     st.markdown("### 🔍 Escanea código de barras o escribe el nombre")
     codigo_input = st.chat_input("Escanea aquí...")
@@ -819,55 +819,36 @@ elif opcion == "🛒 PUNTO DE VENTA":
         busqueda = codigo_input.strip()
         if busqueda:
             try:
-                # 1) Buscar por código de barras exacto
-                response = db.table("inventario")\
+                # 1) Buscar por código de barras exacto (coincidencia total)
+                response_code = db.table("inventario")\
                     .select("*")\
                     .eq("codigo_barras", busqueda)\
                     .execute()
-                productos = response.data
-                # 2) Si no, buscar por nombre (contenga)
-                if not productos:
-                    response = db.table("inventario")\
-                        .select("*")\
-                        .ilike("nombre", f"%{busqueda}%")\
-                        .order("nombre")\
-                        .limit(5)\
-                        .execute()
-                    productos = response.data
+                productos_code = response_code.data
                 
-                if not productos:
-                    st.warning(f"❌ No se encontró ningún producto con código o nombre: {busqueda}")
-                else:
-                    # Tomar el primer producto (el más relevante)
-                    prod = productos[0]
-                    # Si hay múltiples por nombre, informar
-                    if len(productos) > 1 and response.data[0].get('codigo_barras') != busqueda:
-                        st.info(f"Se encontraron {len(productos)} productos. Se agregó: **{prod['nombre']}**. Si no es el deseado, sé más específico.")
-                    
-                    # Validar stock suficiente (al menos 1 para agregar)
+                if productos_code:
+                    # Código exacto encontrado → agregar automáticamente
+                    prod = productos_code[0]
+                    # Validar stock
                     if prod['stock'] <= 0:
                         st.error(f"⚠️ Producto '{prod['nombre']}' sin stock disponible.")
                     else:
-                        # Calcular cantidad actual en carrito
-                        cant_actual = 0
-                        for item in carrito:
-                            if item['id'] == prod['id']:
-                                cant_actual = item['cantidad']
+                        carrito_actual = carrito
+                        cant_actual = sum(item['cantidad'] for item in carrito_actual if item['id'] == prod['id'])
                         nueva_cant_total = cant_actual + 1
-                        # Verificar que no supere stock disponible
                         if nueva_cant_total > prod['stock']:
                             st.error(f"⚠️ Stock insuficiente. Solo hay {prod['stock']} {prod.get('unidad_medida', 'unidades')} disponibles.")
                         else:
-                            # Determinar precio (mayorista si aplica)
+                            # Precio mayorista si aplica
                             if nueva_cant_total >= prod['min_mayor']:
                                 precio_final = float(prod['precio_mayor'])
                                 tipo_precio = " (Mayor)"
                             else:
                                 precio_final = float(prod['precio_detal'])
                                 tipo_precio = ""
-                            # Agregar o actualizar carrito
+                            # Buscar si ya existe en carrito
                             encontrado = False
-                            for item in carrito:
+                            for item in carrito_actual:
                                 if item['id'] == prod['id']:
                                     item['cantidad'] += 1
                                     item['precio'] = precio_final
@@ -875,7 +856,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
                                     encontrado = True
                                     break
                             if not encontrado:
-                                carrito.append({
+                                carrito_actual.append({
                                     "id": prod['id'],
                                     "nombre": prod['nombre'],
                                     "unidad": prod.get('unidad_medida', 'unidad'),
@@ -887,6 +868,65 @@ elif opcion == "🛒 PUNTO DE VENTA":
                                 })
                             st.success(f"✅ Agregado: {prod['nombre']} (x1)")
                             st.rerun()
+                else:
+                    # No es código exacto → buscar por nombre (contenga)
+                    response_name = db.table("inventario")\
+                        .select("*")\
+                        .ilike("nombre", f"%{busqueda}%")\
+                        .gt("stock", 0)\
+                        .order("nombre")\
+                        .limit(10)\
+                        .execute()
+                    productos_nombre = response_name.data
+                    
+                    if not productos_nombre:
+                        st.warning(f"❌ No se encontró ningún producto con nombre o código: {busqueda}")
+                    else:
+                        # Mostrar lista de resultados con botones
+                        st.markdown("### 🔍 Resultados de búsqueda por nombre:")
+                        for prod in productos_nombre:
+                            col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
+                            col1.write(f"**{prod['nombre']}** ({prod.get('unidad_medida', 'unidad')})")
+                            col2.write(f"${prod['precio_detal']:.2f}")
+                            col3.write(f"Stock: {prod['stock']:.2f}")
+                            if col4.button("➕ Agregar", key=f"select_{prod['id']}_{datetime.now().timestamp()}"):
+                                # Validar stock
+                                if prod['stock'] <= 0:
+                                    st.error(f"⚠️ Producto '{prod['nombre']}' sin stock disponible.")
+                                else:
+                                    carrito_actual = carrito
+                                    cant_actual = sum(item['cantidad'] for item in carrito_actual if item['id'] == prod['id'])
+                                    nueva_cant_total = cant_actual + 1
+                                    if nueva_cant_total > prod['stock']:
+                                        st.error(f"⚠️ Stock insuficiente. Solo hay {prod['stock']} {prod.get('unidad_medida', 'unidades')} disponibles.")
+                                    else:
+                                        if nueva_cant_total >= prod['min_mayor']:
+                                            precio_final = float(prod['precio_mayor'])
+                                            tipo_precio = " (Mayor)"
+                                        else:
+                                            precio_final = float(prod['precio_detal'])
+                                            tipo_precio = ""
+                                        encontrado = False
+                                        for item in carrito_actual:
+                                            if item['id'] == prod['id']:
+                                                item['cantidad'] += 1
+                                                item['precio'] = precio_final
+                                                item['subtotal'] = item['cantidad'] * item['precio']
+                                                encontrado = True
+                                                break
+                                        if not encontrado:
+                                            carrito_actual.append({
+                                                "id": prod['id'],
+                                                "nombre": prod['nombre'],
+                                                "unidad": prod.get('unidad_medida', 'unidad'),
+                                                "cantidad": 1,
+                                                "precio": precio_final,
+                                                "costo": float(prod['costo']),
+                                                "subtotal": precio_final,
+                                                "tipo_precio": tipo_precio
+                                            })
+                                        st.success(f"✅ Agregado: {prod['nombre']} (x1)")
+                                        st.rerun()
             except Exception as e:
                 st.error(f"Error al buscar: {e}")
     
