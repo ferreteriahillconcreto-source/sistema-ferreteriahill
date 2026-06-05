@@ -785,7 +785,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
             st.rerun()
     
     cliente_data = st.session_state.clientes[st.session_state.cliente_actual]
-    carrito = cliente_data['carrito']
+    carrito = cliente_data['carrito']  # referencia local, pero las modificaciones se harán directamente al objeto de session_state
     
     st.divider()
     
@@ -833,7 +833,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
                     if prod['stock'] <= 0:
                         st.error(f"⚠️ Producto '{prod['nombre']}' sin stock disponible.")
                     else:
-                        carrito_actual = carrito
+                        carrito_actual = st.session_state.clientes[st.session_state.cliente_actual]['carrito']
                         cant_actual = sum(item['cantidad'] for item in carrito_actual if item['id'] == prod['id'])
                         nueva_cant_total = cant_actual + 1
                         if nueva_cant_total > prod['stock']:
@@ -882,19 +882,18 @@ elif opcion == "🛒 PUNTO DE VENTA":
                     if not productos_nombre:
                         st.warning(f"❌ No se encontró ningún producto con nombre o código: {busqueda}")
                     else:
-                        # Mostrar lista de resultados con botones
                         st.markdown("### 🔍 Resultados de búsqueda por nombre:")
-                        for prod in productos_nombre:
+                        for idx, prod in enumerate(productos_nombre):
                             col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
                             col1.write(f"**{prod['nombre']}** ({prod.get('unidad_medida', 'unidad')})")
                             col2.write(f"${prod['precio_detal']:.2f}")
                             col3.write(f"Stock: {prod['stock']:.2f}")
-                            if col4.button("➕ Agregar", key=f"select_{prod['id']}_{datetime.now().timestamp()}"):
-                                # Validar stock
+                            if col4.button("➕ Agregar", key=f"add_nombre_{prod['id']}_{idx}"):
+                                # Lógica de agregar
                                 if prod['stock'] <= 0:
                                     st.error(f"⚠️ Producto '{prod['nombre']}' sin stock disponible.")
                                 else:
-                                    carrito_actual = carrito
+                                    carrito_actual = st.session_state.clientes[st.session_state.cliente_actual]['carrito']
                                     cant_actual = sum(item['cantidad'] for item in carrito_actual if item['id'] == prod['id'])
                                     nueva_cant_total = cant_actual + 1
                                     if nueva_cant_total > prod['stock']:
@@ -1107,7 +1106,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
             venta_valida = vuelto_usd >= -0.01 and len(carrito) > 0
             if st.button("✅ Cobrar y finalizar", type="primary", use_container_width=True, disabled=not venta_valida):
                 try:
-                    # Validar stock suficiente antes de descontar (por si alguien modificó el inventario entre tanto)
+                    # Validar stock suficiente antes de descontar
                     for item in carrito:
                         stock_actual = db.table("inventario").select("stock").eq("id", item['id']).execute().data[0]['stock']
                         if item['cantidad'] > stock_actual:
@@ -1202,7 +1201,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
                         </div>
                         """
                         st.markdown(factura_html, unsafe_allow_html=True)
-                        # Botón de impresión (abre el diálogo de impresión del navegador)
+                        # Botón de impresión
                         st.markdown("""
                             <script>
                             function imprimir() {
