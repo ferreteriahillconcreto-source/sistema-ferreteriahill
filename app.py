@@ -291,9 +291,9 @@ if opcion == "📦 INVENTARIO":
     
     UNIDADES = ["unidad", "metro", "kilo", "litro", "galón", "pieza"]
     
-    # Cargar datos
+    # Cargar datos (con range para obtener todos los registros)
     try:
-        response = db.table("inventario").select("*").order("nombre").execute()
+        response = db.table("inventario").select("*").order("nombre").range(0, 10000).execute()
         df = pd.DataFrame(response.data) if response.data else pd.DataFrame()
         
         if not df.empty:
@@ -367,15 +367,18 @@ if opcion == "📦 INVENTARIO":
             page_size = st.selectbox("Productos por página", [25, 50, 100, 200], index=1, key="page_size_inv")
             total_paginas = (total_filas + page_size - 1) // page_size
             
+            if 'pagina_actual' not in st.session_state:
+                st.session_state.pagina_actual = 1
+            if st.session_state.pagina_actual > total_paginas:
+                st.session_state.pagina_actual = total_paginas
+            
             col_pag1, col_pag2, col_pag3 = st.columns([1, 2, 1])
             with col_pag1:
-                if st.button("◀ Anterior", disabled=(st.session_state.get('pagina_actual', 1) == 1)):
-                    st.session_state.pagina_actual = st.session_state.get('pagina_actual', 1) - 1
+                if st.button("◀ Anterior", disabled=(st.session_state.pagina_actual == 1)):
+                    st.session_state.pagina_actual -= 1
                     st.rerun()
             with col_pag2:
-                if 'pagina_actual' not in st.session_state:
-                    st.session_state.pagina_actual = 1
-                st.markdown(f"<div style='text-align: center;'>Página {st.session_state.pagina_actual} de {total_paginas}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='text-align: center;'>Página {st.session_state.pagina_actual} de {total_paginas} (Total: {total_filas} productos)</div>", unsafe_allow_html=True)
                 ir_a = st.number_input("Ir a página", min_value=1, max_value=total_paginas, value=st.session_state.pagina_actual, step=1, label_visibility="collapsed")
                 if ir_a != st.session_state.pagina_actual:
                     st.session_state.pagina_actual = ir_a
@@ -411,7 +414,6 @@ if opcion == "📦 INVENTARIO":
             # EDICIÓN DE PRODUCTO (selectbox + formulario)
             # ============================================
             st.subheader("✏️ Editar producto")
-            # Lista de nombres de productos (del total filtrado, no solo página)
             productos_nombres = df_filtrado['nombre'].tolist()
             producto_editar = st.selectbox("Seleccionar producto", [""] + productos_nombres, key="editar_select")
             if producto_editar:
@@ -479,7 +481,7 @@ if opcion == "📦 INVENTARIO":
                     st.error("Clave incorrecta")
     
     # ==================================================
-    # PESTAÑA 2: AGREGAR PRODUCTO (sin cambios, pero optimizado)
+    # PESTAÑA 2: AGREGAR PRODUCTO
     # ==================================================
     with tab2:
         with st.form("nuevo_producto", clear_on_submit=True):
@@ -530,7 +532,7 @@ if opcion == "📦 INVENTARIO":
                         st.error(f"Error al registrar: {e}")
     
     # ==================================================
-    # PESTAÑA 3: ESTADÍSTICAS (compactas)
+    # PESTAÑA 3: ESTADÍSTICAS
     # ==================================================
     with tab3:
         if not df.empty:
