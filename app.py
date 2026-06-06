@@ -206,7 +206,7 @@ def exportar_excel(df, nombre_archivo):
 with st.sidebar:
     st.markdown("""
         <div style="background: linear-gradient(135deg, #0a1929 0%, #1a2b3c 100%); padding: 2rem 1rem; border-radius: 0 0 20px 20px; text-align: center; margin-top: -1rem; margin-bottom: 1rem;">
-            <h1 style="color: white; margin: 0; font-size: 2.2rem; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">🔧 FERRETERIA CHILL</h1>
+            <h1 style="color: white; margin: 0; font-size: 2.2rem; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">🔧 FERRETERIA HILL</h1>
             <h2 style="color: #ffd700; margin: 0; font-size: 1.5rem; letter-spacing: 1px;">Soluciones en herramientas y materiales</h2>
             <p style="color: rgba(255,255,255,0.9); margin-top: 0.5rem; font-style: italic;">Calidad y servicio desde 2025</p>
         </div>
@@ -282,7 +282,7 @@ with st.sidebar:
 # MÓDULO 1: INVENTARIO (VERSIÓN CON CARGA COMPLETA SIN LÍMITE)
 # ============================================
 if opcion == "📦 INVENTARIO":
-    st.markdown("<h1 class='main-header'>📦 Gestión de Inventario - Ferreteria Chill</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='main-header'>📦 Gestión de Inventario - Ferreteria hill</h1>", unsafe_allow_html=True)
     
     CATEGORIAS_FERRETERIA = [
         "Herramientas", "Pinturas", "Electricidad", "Plomería",
@@ -751,7 +751,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
     id_turno = st.session_state.id_turno
     tasa = st.session_state.tasa_dia
     
-    st.markdown("<h1 class='main-header'>🛒 Punto de Venta - Ferreteria Chill</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='main-header'>🛒 Punto de Venta - Ferreteria hill</h1>", unsafe_allow_html=True)
     st.markdown(f"""
         <div style='background-color: #e7f3ff; padding: 0.8rem; border-radius: 8px; margin-bottom: 1rem;'>
             <span style='font-weight:600;'>📍 Turno #{id_turno}</span> | 
@@ -1115,7 +1115,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
                             """
                         factura_html = f"""
                         <div style="background:white; padding:20px; border-radius:10px; border:2px solid #1e3c72;">
-                            <h3 style="text-align:center;">🔧 FERRETERIA CHILL</h3>
+                            <h3 style="text-align:center;">🔧 FERRETERIA HILL</h3>
                             <p style="text-align:center;">{datetime.now().strftime('%d/%m/%Y %H:%M')} | Turno #{id_turno}</p>
                             <p>Cliente: {info_cliente} | Atendido: {st.session_state.usuario_actual['nombre']}</p>
                             <hr>
