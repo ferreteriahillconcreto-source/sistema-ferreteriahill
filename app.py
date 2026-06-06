@@ -9,10 +9,10 @@ import base64
 from io import BytesIO
 
 # ============================================
-# CONFIGURACIÓN INICIAL - FERRETERIA CHILL
+# CONFIGURACIÓN INICIAL - FERRETERIA HILL
 # ============================================
 st.set_page_config(
-    page_title="FERRETERIA CHILL",
+    page_title="FERRETERIA HILL",
     page_icon="🔧",
     layout="wide",
     initial_sidebar_state="expanded"
