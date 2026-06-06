@@ -746,7 +746,7 @@ if opcion == "📦 INVENTARIO":
         st.exception(e)
 
 # ============================================
-# MÓDULO 2: PUNTO DE VENTA (TABLA CON BORDES Y SUBTOTAL EN USD+Bs)
+# MÓDULO 2: PUNTO DE VENTA (CON LIMPIEZA DE RESULTADOS AL AGREGAR)
 # ============================================
 elif opcion == "🛒 PUNTO DE VENTA":
     requiere_turno()
@@ -908,6 +908,8 @@ elif opcion == "🛒 PUNTO DE VENTA":
                                 "tipo_precio": " (Mayor)" if nueva_cant >= prod['min_mayor'] else ""
                             })
                         st.success(f"✅ Agregado: {prod['nombre']}")
+                        # LIMPIAR RESULTADOS DESPUÉS DE AGREGAR
+                        st.session_state.resultados_busqueda = []
                         st.rerun()
             st.markdown("---")
     
@@ -1065,7 +1067,6 @@ elif opcion == "🛒 PUNTO DE VENTA":
             venta_valida = vuelto_usd >= -0.01 and len(carrito) > 0
             if st.button("✅ Cobrar y finalizar", type="primary", use_container_width=True, disabled=not venta_valida):
                 try:
-                    # Validar stock
                     for item in carrito:
                         stock_actual = db.table("inventario").select("stock").eq("id", item['id']).execute().data[0]['stock']
                         if item['cantidad'] > stock_actual:
@@ -1105,7 +1106,6 @@ elif opcion == "🛒 PUNTO DE VENTA":
                     st.balloons()
                     st.success(f"✅ Venta registrada - {info_cliente}")
                     
-                    # Ticket
                     with st.popover("🧾 VER TICKET", use_container_width=True):
                         items_html = ""
                         for item in carrito:
@@ -1124,9 +1124,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
                             <p>Cliente: {info_cliente} | Atendido: {st.session_state.usuario_actual['nombre']}</p>
                             <hr>
                             <table style="width:100%; border-collapse: collapse;">
-                                <thead>
-                                    <tr style="border-bottom:1px solid #ccc;"><th>Cant</th><th>Producto</th><th>Precio</th><th>Subtotal</th></tr>
-                                </thead>
+                                <thead><tr style="border-bottom:1px solid #ccc;"><th>Cant</th><th>Producto</th><th>Precio</th><th>Subtotal</th></tr></thead>
                                 <tbody>{items_html}</tbody>
                             </table>
                             <hr>
