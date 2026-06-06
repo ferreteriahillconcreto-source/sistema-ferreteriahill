@@ -279,7 +279,7 @@ with st.sidebar:
         st.error("🔴 Caja cerrada")
 
 # ============================================
-# MÓDULO 1: INVENTARIO (MEJORADO: IMPORTACIÓN FLEXIBLE, BÚSQUEDA AVANZADA, PAGINACIÓN)
+# MÓDULO 1: INVENTARIO (MEJORADO: BÚSQUEDA GLOBAL, EDICIÓN RÁPIDA, FORMATO LIMPIO)
 # ============================================
 if opcion == "📦 INVENTARIO":
     st.markdown("<h1 class='main-header'>📦 Gestión de Inventario - Ferreteria Chill</h1>", unsafe_allow_html=True)
@@ -291,6 +291,9 @@ if opcion == "📦 INVENTARIO":
     
     UNIDADES = ["unidad", "metro", "kilo", "litro", "galón", "pieza"]
     
+    # ============================================
+    # CARGA DE DATOS
+    # ============================================
     try:
         response = db.table("inventario").select("*").order("nombre").execute()
         df = pd.DataFrame(response.data) if response.data else pd.DataFrame()
@@ -307,443 +310,482 @@ if opcion == "📦 INVENTARIO":
             for col in ['stock', 'costo', 'precio_detal', 'precio_mayor', 'min_mayor']:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-        
-        # ----- PESTAÑAS -----
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(["📋 Ver Inventario", "➕ Agregar Producto", "📊 Estadísticas", "📥 Respaldos", "📤 Importar Masivo"])
-        
-        # ==================================================
-        # PESTAÑA 1: VER INVENTARIO (CON PAGINACIÓN Y BÚSQUEDA RÁPIDA)
-        # ==================================================
-        with tab1:
-            st.subheader("🔎 Búsqueda avanzada")
-            col_f1, col_f2, col_f3, col_f4 = st.columns(4)
-            with col_f1:
-                busqueda_nombre = st.text_input("Nombre o código", placeholder="Ej: Martillo, 123456")
-            with col_f2:
-                busqueda_marca = st.text_input("Marca", placeholder="Stanley, DeWalt...")
-            with col_f3:
-                busqueda_proveedor = st.text_input("Proveedor", placeholder="Distribuidora XYZ")
-            with col_f4:
-                categoria_filtro = st.selectbox("Categoría", ["Todas"] + CATEGORIAS_FERRETERIA)
-            
-            # Filtro adicional: mostrar solo stock bajo (opcional)
-            ver_bajo_stock = st.checkbox("⚠️ Solo mostrar productos con stock bajo (<5) o negativo")
-            
-            # Aplicar filtros al DataFrame
-            df_filtrado = df.copy() if not df.empty else df
-            if not df_filtrado.empty:
-                if busqueda_nombre:
-                    mask_nombre = df_filtrado['nombre'].str.contains(busqueda_nombre, case=False, na=False)
-                    if 'codigo_barras' in df_filtrado.columns:
-                        codigos_str = df_filtrado['codigo_barras'].fillna('').astype(str)
-                        mask_codigo = codigos_str.str.contains(busqueda_nombre, case=False, na=False)
-                        df_filtrado = df_filtrado[mask_nombre | mask_codigo]
-                    else:
-                        df_filtrado = df_filtrado[mask_nombre]
-                if busqueda_marca:
-                    df_filtrado = df_filtrado[df_filtrado['marca'].str.contains(busqueda_marca, case=False, na=False)]
-                if busqueda_proveedor:
-                    df_filtrado = df_filtrado[df_filtrado['proveedor'].str.contains(busqueda_proveedor, case=False, na=False)]
-                if categoria_filtro != "Todas":
-                    df_filtrado = df_filtrado[df_filtrado['categoria'] == categoria_filtro]
-                if ver_bajo_stock:
-                    df_filtrado = df_filtrado[df_filtrado['stock'] < 5]
-            
-            if df_filtrado.empty:
-                st.info("No hay productos que coincidan con los filtros.")
+    
+    except Exception as e:
+        st.error(f"Error cargando datos: {e}")
+        st.stop()
+    
+    # Funciones auxiliares para formato condicional de números
+    def format_number(x):
+        """Devuelve el número como entero si es entero, o con 2 decimales si tiene fracción"""
+        if pd.isna(x):
+            return ''
+        if isinstance(x, (int, float)):
+            if x == int(x):
+                return f"{int(x)}"
             else:
-                # PAGINACIÓN
-                PAGE_SIZE = 50
-                total_filas = len(df_filtrado)
-                total_paginas = (total_filas + PAGE_SIZE - 1) // PAGE_SIZE
+                return f"{x:.2f}"
+        return str(x)
+    
+    # ============================================
+    # SIDEBAR: FILTROS AVANZADOS Y CONFIGURACIÓN
+    # ============================================
+    with st.sidebar:
+        st.subheader("🔍 Búsqueda y filtros")
+        
+        # Búsqueda global (único campo)
+        busqueda_global = st.text_input("Buscar producto (nombre, código, marca, proveedor)", placeholder="Ej: Martillo, 123456, Stanley...")
+        
+        with st.expander("⚙️ Filtros avanzados", expanded=False):
+            categoria_filtro = st.selectbox("Categoría", ["Todas"] + CATEGORIAS_FERRETERIA)
+            marca_filtro = st.text_input("Marca (contiene)", placeholder="Stanley, DeWalt...")
+            proveedor_filtro = st.text_input("Proveedor (contiene)", placeholder="Distribuidora XYZ")
+            ver_bajo_stock = st.checkbox("⚠️ Solo stock bajo (<5) o negativo")
+            
+            if st.button("🧹 Limpiar todos los filtros", use_container_width=True):
+                st.query_params.clear()
+                st.rerun()
+        
+        st.divider()
+        st.subheader("📄 Configuración de tabla")
+        
+        # Seleccionar columnas a mostrar
+        columnas_disponibles = {
+            "Producto": "nombre",
+            "Categoría": "categoria",
+            "Unidad": "unidad_medida",
+            "Marca": "marca",
+            "Proveedor": "proveedor",
+            "Stock": "stock",
+            "Costo $": "costo",
+            "Detal $": "precio_detal",
+            "Mayor $": "precio_mayor",
+            "Mín. Mayor": "min_mayor"
+        }
+        columnas_por_defecto = ["Producto", "Categoría", "Unidad", "Stock", "Detal $", "Mayor $"]
+        columnas_seleccionadas = st.multiselect(
+            "Columnas visibles",
+            options=list(columnas_disponibles.keys()),
+            default=[col for col in columnas_por_defecto if col in columnas_disponibles]
+        )
+        
+        # Paginación
+        st.subheader("📄 Paginación")
+        page_size = st.selectbox("Productos por página", [25, 50, 100, 200], index=1)
+        # Control de página
+        if 'pagina_actual' not in st.session_state:
+            st.session_state.pagina_actual = 1
+        col_pag1, col_pag2 = st.columns(2)
+        with col_pag1:
+            if st.button("◀ Anterior", use_container_width=True, disabled=(st.session_state.pagina_actual == 1)):
+                st.session_state.pagina_actual -= 1
+                st.rerun()
+        with col_pag2:
+            if st.button("Siguiente ▶", use_container_width=True):
+                st.session_state.pagina_actual += 1
+                st.rerun()
+        ir_a_pagina = st.number_input("Ir a página", min_value=1, value=st.session_state.pagina_actual, step=1)
+        if ir_a_pagina != st.session_state.pagina_actual:
+            st.session_state.pagina_actual = ir_a_pagina
+            st.rerun()
+    
+    # ============================================
+    # APLICAR FILTROS AL DATAFRAME
+    # ============================================
+    df_filtrado = df.copy() if not df.empty else df
+    if not df_filtrado.empty:
+        # Búsqueda global (varias columnas)
+        if busqueda_global:
+            busqueda = busqueda_global.strip().lower()
+            mask = (
+                df_filtrado['nombre'].str.lower().str.contains(busqueda, na=False) |
+                df_filtrado['codigo_barras'].astype(str).str.lower().str.contains(busqueda, na=False) |
+                df_filtrado['marca'].str.lower().str.contains(busqueda, na=False) |
+                df_filtrado['proveedor'].str.lower().str.contains(busqueda, na=False) |
+                df_filtrado['categoria'].str.lower().str.contains(busqueda, na=False)
+            )
+            df_filtrado = df_filtrado[mask]
+        if categoria_filtro != "Todas":
+            df_filtrado = df_filtrado[df_filtrado['categoria'] == categoria_filtro]
+        if marca_filtro:
+            df_filtrado = df_filtrado[df_filtrado['marca'].str.contains(marca_filtro, case=False, na=False)]
+        if proveedor_filtro:
+            df_filtrado = df_filtrado[df_filtrado['proveedor'].str.contains(proveedor_filtro, case=False, na=False)]
+        if ver_bajo_stock:
+            df_filtrado = df_filtrado[df_filtrado['stock'] < 5]
+    
+    # Mostrar resultados
+    if df_filtrado.empty:
+        st.info("No hay productos que coincidan con los criterios.")
+        st.stop()
+    
+    total_filas = len(df_filtrado)
+    total_paginas = (total_filas + page_size - 1) // page_size
+    if st.session_state.pagina_actual > total_paginas:
+        st.session_state.pagina_actual = total_paginas
+    inicio = (st.session_state.pagina_actual - 1) * page_size
+    fin = inicio + page_size
+    df_pagina = df_filtrado.iloc[inicio:fin].copy()
+    
+    # ============================================
+    # CONFIGURAR COLUMNAS VISIBLES
+    # ============================================
+    columnas_mostrar_indices = [col for col in columnas_seleccionadas if col in columnas_disponibles]
+    df_mostrar = pd.DataFrame()
+    for col in columnas_mostrar_indices:
+        col_interna = columnas_disponibles[col]
+        if col_interna in df_pagina.columns:
+            df_mostrar[col] = df_pagina[col_interna].copy()
+    
+    # Formatear columnas numéricas (aplicar format_number)
+    for col in df_mostrar.columns:
+        if col in ["Stock", "Costo $", "Detal $", "Mayor $"]:
+            df_mostrar[col] = df_mostrar[col].apply(format_number)
+    
+    # Añadir columna de acciones (edit/delete) al final
+    df_mostrar["Acciones"] = ""
+    
+    # ============================================
+    # MOSTRAR TABLA CON ESTILOS Y ACCIONES
+    # ============================================
+    st.subheader(f"📋 Inventario (página {st.session_state.pagina_actual} de {total_paginas} - {total_filas} productos)")
+    
+    # Mostrar tabla con st.dataframe (sin acciones embebidas, las acciones se dibujan aparte)
+    st.dataframe(df_mostrar.drop(columns=["Acciones"]), use_container_width=True, hide_index=True)
+    
+    # Por separado, mostrar botones de acción para cada fila (usando columnas dentro de un contenedor)
+    # Es una solución más robusta que intentar poner botones dentro del dataframe.
+    st.markdown("---")
+    st.subheader("🔧 Acciones por producto (editar/eliminar)")
+    
+    # Para cada producto en la página actual, mostramos una línea con botones
+    for idx, row in df_pagina.iterrows():
+        prod_id = row['id']
+        prod_nombre = row['nombre']
+        with st.container(border=True):
+            col1, col2, col3, col4 = st.columns([4, 1, 1, 1])
+            col1.write(f"**{prod_nombre}**")
+            col2.write(f"Stock: {format_number(row['stock'])}")
+            if col3.button("✏️ Editar", key=f"edit_{prod_id}"):
+                st.session_state['producto_edit_id'] = prod_id
+                st.rerun()
+            if col4.button("🗑️ Eliminar", key=f"del_{prod_id}"):
+                st.session_state['producto_eliminar_id'] = prod_id
+                st.rerun()
+    
+    # ============================================
+    # FORMULARIO DE EDICIÓN (popover o expander)
+    # ============================================
+    if 'producto_edit_id' in st.session_state:
+        prod_id = st.session_state['producto_edit_id']
+        prod = df[df['id'] == prod_id].iloc[0]
+        with st.expander(f"✏️ Editando: {prod['nombre']}", expanded=True):
+            with st.form(key=f"edit_form_{prod_id}"):
+                col_e1, col_e2 = st.columns(2)
+                with col_e1:
+                    nuevo_nombre = st.text_input("Nombre", value=prod['nombre'])
+                    nueva_categoria = st.selectbox("Categoría", CATEGORIAS_FERRETERIA, 
+                                                  index=CATEGORIAS_FERRETERIA.index(prod.get('categoria', 'Otros')) if prod.get('categoria', 'Otros') in CATEGORIAS_FERRETERIA else 8)
+                    nueva_unidad = st.selectbox("Unidad de medida", UNIDADES, 
+                                                index=UNIDADES.index(prod.get('unidad_medida','unidad')) if prod.get('unidad_medida') in UNIDADES else 0)
+                    nueva_marca = st.text_input("Marca", value=prod.get('marca', ''))
+                    nuevo_proveedor = st.text_input("Proveedor", value=prod.get('proveedor', ''))
+                    nuevo_stock = st.number_input("Stock", value=float(prod['stock']), min_value=-9999.0, step=0.1, format="%.2f")
+                    nuevo_costo = st.number_input("Costo $", value=float(prod['costo']), min_value=0.0, step=0.01, format="%.2f")
+                    nuevo_codigo = st.text_input("Código de barras", value=prod.get('codigo_barras', ''))
+                with col_e2:
+                    nuevo_detal = st.number_input("Precio Detal $", value=float(prod['precio_detal']), min_value=0.0, step=0.01, format="%.2f")
+                    nuevo_mayor = st.number_input("Precio Mayor $", value=float(prod['precio_mayor']), min_value=0.0, step=0.01, format="%.2f")
+                    nuevo_min = st.number_input("Mín. Mayor (unidades)", value=int(prod['min_mayor']), min_value=1, step=1)
                 
-                if 'pagina_actual' not in st.session_state:
-                    st.session_state.pagina_actual = 1
-                
-                col_pag1, col_pag2, col_pag3 = st.columns([1, 2, 1])
-                with col_pag1:
-                    if st.button("◀ Anterior", disabled=(st.session_state.pagina_actual == 1)):
-                        st.session_state.pagina_actual -= 1
-                        st.rerun()
-                with col_pag2:
-                    st.markdown(f"<div style='text-align: center;'>Página {st.session_state.pagina_actual} de {total_paginas} (Total: {total_filas} productos)</div>", unsafe_allow_html=True)
-                with col_pag3:
-                    if st.button("Siguiente ▶", disabled=(st.session_state.pagina_actual == total_paginas)):
-                        st.session_state.pagina_actual += 1
-                        st.rerun()
-                
-                inicio = (st.session_state.pagina_actual - 1) * PAGE_SIZE
-                fin = inicio + PAGE_SIZE
-                df_pagina = df_filtrado.iloc[inicio:fin].copy()
-                
-                # Mostrar tabla con colores
-                def colorear_stock(val):
-                    if val < 0:
-                        return 'color: orange; font-weight: bold; background-color: #fff3cd'
-                    elif val < 5:
-                        return 'color: red; font-weight: bold; background-color: #ffe6e6'
-                    elif val < 10:
-                        return 'color: orange; font-weight: bold;'
-                    return 'color: green; font-weight: bold;'
-                
-                columnas_mostrar = ['nombre', 'categoria', 'unidad_medida', 'marca', 'proveedor', 'stock', 'costo', 'precio_detal', 'precio_mayor', 'min_mayor']
-                columnas_mostrar = [col for col in columnas_mostrar if col in df_pagina.columns]
-                df_mostrar = df_pagina[columnas_mostrar].copy()
-                df_mostrar.columns = ['Producto', 'Categoría', 'Unidad', 'Marca', 'Proveedor', 'Stock', 'Costo $', 'Detal $', 'Mayor $', 'Mín. Mayor']
-                styled_df = df_mostrar.style.map(colorear_stock, subset=['Stock'])
-                st.dataframe(styled_df, use_container_width=True, hide_index=True)
-                
-                # Exportar resultados filtrados a Excel (no solo la página)
-                if st.button("📤 Exportar resultados filtrados a Excel", use_container_width=True):
-                    export_df = df_filtrado[['nombre', 'categoria', 'unidad_medida', 'marca', 'proveedor', 'stock', 'costo', 'precio_detal', 'precio_mayor', 'min_mayor']].copy()
-                    export_df.columns = ['Producto', 'Categoría', 'Unidad', 'Marca', 'Proveedor', 'Stock', 'Costo $', 'Precio Detal $', 'Precio Mayor $', 'Min. Mayor']
-                    href = exportar_excel(export_df, f"inventario_filtrado_{datetime.now().strftime('%Y%m%d_%H%M')}")
-                    st.markdown(href, unsafe_allow_html=True)
-                
-                st.divider()
-                # Editar producto
-                st.subheader("✏️ Editar producto")
-                if not df_filtrado.empty:
-                    productos_filtrados = df_filtrado['nombre'].tolist()
-                    producto_editar = st.selectbox("Seleccionar producto", productos_filtrados, key="editar")
-                    if producto_editar:
-                        prod = df[df['nombre'] == producto_editar].iloc[0]
-                        with st.form("form_editar"):
-                            col_e1, col_e2 = st.columns(2)
-                            with col_e1:
-                                nuevo_nombre = st.text_input("Nombre", value=prod['nombre'])
-                                nueva_categoria = st.selectbox("Categoría", CATEGORIAS_FERRETERIA, 
-                                                              index=CATEGORIAS_FERRETERIA.index(prod.get('categoria', 'Otros')) if prod.get('categoria', 'Otros') in CATEGORIAS_FERRETERIA else 8)
-                                nueva_unidad = st.selectbox("Unidad de medida", UNIDADES, index=UNIDADES.index(prod.get('unidad_medida','unidad')) if prod.get('unidad_medida') in UNIDADES else 0)
-                                nueva_marca = st.text_input("Marca", value=prod.get('marca', ''))
-                                nuevo_proveedor = st.text_input("Proveedor", value=prod.get('proveedor', ''))
-                                nuevo_stock = st.number_input("Stock", value=float(prod['stock']), min_value=-9999.0, step=0.1, format="%.2f")
-                                nuevo_costo = st.number_input("Costo $", value=float(prod['costo']), min_value=0.0, step=0.01, format="%.2f")
-                                nuevo_codigo = st.text_input("Código de barras", value=prod.get('codigo_barras', ''))
-                            with col_e2:
-                                nuevo_detal = st.number_input("Precio Detal $", value=float(prod['precio_detal']), min_value=0.0, step=0.01, format="%.2f")
-                                nuevo_mayor = st.number_input("Precio Mayor $", value=float(prod['precio_mayor']), min_value=0.0, step=0.01, format="%.2f")
-                                nuevo_min = st.number_input("Mín. Mayor (unidades)", value=int(prod['min_mayor']), min_value=1, step=1)
-                            if st.form_submit_button("💾 Guardar Cambios", use_container_width=True):
-                                try:
-                                    datos_actualizados = {
-                                        "nombre": nuevo_nombre,
-                                        "categoria": nueva_categoria,
-                                        "unidad_medida": nueva_unidad,
-                                        "marca": nueva_marca,
-                                        "proveedor": nuevo_proveedor,
-                                        "stock": nuevo_stock,
-                                        "costo": nuevo_costo,
-                                        "precio_detal": nuevo_detal,
-                                        "precio_mayor": nuevo_mayor,
-                                        "min_mayor": nuevo_min
-                                    }
-                                    if nuevo_codigo:
-                                        datos_actualizados["codigo_barras"] = nuevo_codigo
-                                    db.table("inventario").update(datos_actualizados).eq("id", prod['id']).execute()
-                                    st.success("✅ Producto actualizado")
-                                    time.sleep(1)
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"Error: {e}")
-                
-                st.divider()
-                # Eliminar producto
-                st.subheader("🗑️ Eliminar producto")
-                col_d1, col_d2 = st.columns(2)
-                with col_d1:
-                    producto_eliminar = st.selectbox("Seleccionar producto", [""] + df['nombre'].tolist(), key="eliminar")
-                with col_d2:
-                    clave = st.text_input("Clave Admin", type="password", key="clave_eliminar")
-                if producto_eliminar and st.button("❌ Eliminar", type="primary", use_container_width=True):
-                    if clave == CLAVE_ADMIN:
+                col_btn1, col_btn2 = st.columns(2)
+                with col_btn1:
+                    if st.form_submit_button("💾 Guardar cambios", use_container_width=True):
                         try:
-                            db.table("inventario").delete().eq("nombre", producto_eliminar).execute()
-                            st.success(f"Producto '{producto_eliminar}' eliminado")
+                            datos_actualizados = {
+                                "nombre": nuevo_nombre,
+                                "categoria": nueva_categoria,
+                                "unidad_medida": nueva_unidad,
+                                "marca": nueva_marca,
+                                "proveedor": nuevo_proveedor,
+                                "stock": nuevo_stock,
+                                "costo": nuevo_costo,
+                                "precio_detal": nuevo_detal,
+                                "precio_mayor": nuevo_mayor,
+                                "min_mayor": nuevo_min,
+                                "codigo_barras": nuevo_codigo
+                            }
+                            db.table("inventario").update(datos_actualizados).eq("id", prod_id).execute()
+                            st.success("✅ Producto actualizado")
+                            del st.session_state['producto_edit_id']
                             time.sleep(1)
                             st.rerun()
                         except Exception as e:
                             st.error(f"Error: {e}")
-                    else:
-                        st.error("Clave incorrecta")
-        
-        # ==================================================
-        # PESTAÑA 2: AGREGAR PRODUCTO
-        # ==================================================
-        with tab2:
-            with st.form("nuevo_producto", clear_on_submit=True):
-                st.markdown("### 📝 Datos del nuevo producto (Ferretería)")
-                col_a1, col_a2 = st.columns(2)
-                with col_a1:
-                    nombre = st.text_input("Nombre del producto *").upper()
-                    categoria = st.selectbox("Categoría", CATEGORIAS_FERRETERIA)
-                    unidad_medida = st.selectbox("Unidad de medida *", UNIDADES)
-                    marca = st.text_input("Marca (opcional)")
-                    proveedor = st.text_input("Proveedor (opcional)")
-                    stock = st.number_input("Stock inicial *", min_value=-9999.0, step=0.1, format="%.2f")
-                    costo = st.number_input("Costo $ *", min_value=0.0, step=0.01, format="%.2f")
-                    codigo_barras = st.text_input("Código de barras (opcional)")
-                with col_a2:
-                    precio_detal = st.number_input("Precio Detal $ *", min_value=0.0, step=0.01, format="%.2f")
-                    precio_mayor = st.number_input("Precio Mayor $ *", min_value=0.0, step=0.01, format="%.2f")
-                    min_mayor = st.number_input("Mínimo para Mayor (unidades) *", min_value=1, value=6, step=1)
-                if st.form_submit_button("📦 Registrar Producto", use_container_width=True):
-                    if not nombre:
-                        st.error("El nombre es obligatorio")
-                    elif costo < 0 or precio_detal <= 0:
-                        st.error("Verifique los valores ingresados (costo y precio detal deben ser positivos)")
-                    else:
-                        try:
-                            existe = db.table("inventario").select("*").eq("nombre", nombre).execute()
-                            if existe.data:
-                                st.error(f"Ya existe un producto con el nombre '{nombre}'")
-                            else:
-                                datos_nuevos = {
-                                    "nombre": nombre,
-                                    "categoria": categoria,
-                                    "unidad_medida": unidad_medida,
-                                    "marca": marca,
-                                    "proveedor": proveedor,
-                                    "stock": stock,
-                                    "costo": costo,
-                                    "precio_detal": precio_detal,
-                                    "precio_mayor": precio_mayor,
-                                    "min_mayor": min_mayor
-                                }
-                                if codigo_barras:
-                                    datos_nuevos["codigo_barras"] = codigo_barras
-                                db.table("inventario").insert(datos_nuevos).execute()
-                                st.success(f"✅ Producto '{nombre}' registrado exitosamente")
-                                time.sleep(1)
-                                st.rerun()
-                        except Exception as e:
-                            st.error(f"Error al registrar: {e}")
-        
-        # ==================================================
-        # PESTAÑA 3: ESTADÍSTICAS
-        # ==================================================
-        with tab3:
-            if not df.empty:
-                df['stock'] = pd.to_numeric(df['stock'], errors='coerce').fillna(0)
-                valor_inv = (df['stock'] * df['costo']).sum()
-                valor_venta = (df['stock'] * df['precio_detal']).sum()
-                bajo_stock = len(df[df['stock'] < 5])
-                total_productos = len(df)
-                col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-                col_m1.metric("Total productos", total_productos)
-                col_m2.metric("Valor inventario (costo)", formatear_usd(valor_inv))
-                col_m3.metric("Valor venta potencial", formatear_usd(valor_venta))
-                col_m4.metric("Stock bajo", bajo_stock, delta_color="inverse")
-                ganancia_potencial = valor_venta - valor_inv
-                st.metric("💰 Ganancia potencial total", formatear_usd(ganancia_potencial),
-                         delta=f"{(ganancia_potencial/valor_inv*100):.1f}%" if valor_inv else "")
-                st.subheader("📊 Productos por categoría")
-                if 'categoria' in df.columns:
-                    cat_stats = df.groupby('categoria').agg({
-                        'nombre': 'count',
-                        'stock': 'sum',
-                        'costo': lambda x: (x * df.loc[x.index, 'stock']).sum()
-                    }).round(2)
-                    cat_stats.columns = ['Cantidad', 'Stock total', 'Valor total $']
-                    st.dataframe(cat_stats, use_container_width=True)
-                st.subheader("💰 Top 10 productos por valor en inventario")
-                df_temp = df.copy()
-                df_temp['valor_total'] = df_temp['stock'] * df_temp['costo']
-                df_top = df_temp.nlargest(10, 'valor_total')[['nombre', 'categoria', 'unidad_medida', 'marca', 'stock', 'costo', 'valor_total']]
-                df_top.columns = ['Producto', 'Categoría', 'Unidad', 'Marca', 'Stock', 'Costo unitario', 'Valor total']
-                st.dataframe(df_top, use_container_width=True, hide_index=True)
-                st.subheader("⚠️ Productos con stock bajo (<5) o negativo")
-                df_bajo_o_negativo = df[(df['stock'] < 5)][['nombre', 'categoria', 'unidad_medida', 'marca', 'stock', 'costo']]
-                if not df_bajo_o_negativo.empty:
-                    df_bajo_o_negativo.columns = ['Producto', 'Categoría', 'Unidad', 'Marca', 'Stock', 'Costo unitario']
-                    st.dataframe(df_bajo_o_negativo, use_container_width=True, hide_index=True)
-                else:
-                    st.success("No hay productos con stock bajo ni negativo")
-            else:
-                st.info("No hay datos para mostrar estadísticas")
-        
-        # ==================================================
-        # PESTAÑA 4: RESPALDOS
-        # ==================================================
-        with tab4:
-            st.subheader("📥 Respaldo de inventario")
-            st.markdown("""
-                <div style='background-color: #e7f3ff; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;'>
-                    <p>Desde aquí puedes exportar todo tu inventario para tener un respaldo físico.</p>
-                    <p>Recomendación: Haz un respaldo diario antes de cerrar.</p>
-                </div>
-            """, unsafe_allow_html=True)
-            if not df.empty:
-                col_r1, col_r2 = st.columns(2)
-                with col_r1:
-                    st.markdown("**📊 Respaldo completo**")
-                    if st.button("📥 Exportar inventario completo", use_container_width=True):
-                        export_df = df[['nombre', 'categoria', 'unidad_medida', 'marca', 'proveedor', 'stock', 'costo', 'precio_detal', 'precio_mayor', 'min_mayor']].copy()
-                        export_df.columns = ['Producto', 'Categoría', 'Unidad', 'Marca', 'Proveedor', 'Stock', 'Costo $', 'Precio Detal $', 'Precio Mayor $', 'Min. Mayor']
-                        export_df = export_df.sort_values('Producto')
-                        href = exportar_excel(export_df, f"inventario_completo_{datetime.now().strftime('%Y%m%d_%H%M')}")
-                        st.markdown(href, unsafe_allow_html=True)
-                with col_r2:
-                    st.markdown("**📋 Lista de precios**")
-                    if st.button("📥 Exportar lista de precios", use_container_width=True):
-                        precio_df = df[['nombre', 'categoria', 'unidad_medida', 'precio_detal', 'precio_mayor', 'min_mayor']].copy()
-                        precio_df.columns = ['Producto', 'Categoría', 'Unidad', 'Precio Detal $', 'Precio Mayor $', 'Mín. Mayor']
-                        precio_df = precio_df.sort_values('Categoría')
-                        href = exportar_excel(precio_df, f"lista_precios_{datetime.now().strftime('%Y%m%d')}")
-                        st.markdown(href, unsafe_allow_html=True)
-                st.divider()
-                st.markdown(f"""
-                    **📌 Última actualización:** {datetime.now().strftime('%d/%m/%Y %H:%M')}  
-                    **📦 Total de productos:** {len(df)}  
-                    **🏷️ Categorías:** {df['categoria'].nunique() if 'categoria' in df.columns else 0}
-                """)
-            else:
-                st.info("No hay productos para respaldar")
-        
-        # ==================================================
-        # PESTAÑA 5: IMPORTACIÓN MASIVA (FLEXIBLE PARA CRISTAL PLUS)
-        # ==================================================
-        with tab5:
-            st.subheader("📤 Importación masiva desde Cristal Plus (flexible)")
-            st.markdown("""
-                **El sistema detectará automáticamente las columnas** aunque tengan tildes, mayúsculas o espacios.
-                Las columnas necesarias son: `Código`, `Nombre`, `Precio Máximo` (y opcionales: `Departamento`, `Unidad`, `Costo Calculado`, `Existencia`).
-                Puedes subir tu archivo directamente sin modificar nada.
-            """)
-            
-            # Función para normalizar nombres de columnas (quitar tildes, minúsculas, espacios)
-            def normalizar_columna(nombre):
-                import unicodedata
-                nombre = unicodedata.normalize('NFKD', nombre).encode('ASCII', 'ignore').decode('utf-8')
-                return nombre.strip().lower().replace(' ', '_')
-            
-            # Mapeo de posibles variantes a nombres estándar
-            mapeo_columnas = {
-                'codigo': 'codigo_barras',
-                'nombre': 'nombre',
-                'departamento': 'categoria',
-                'unidad': 'unidad_medida',
-                'costo_calculado': 'costo',
-                'existencia': 'stock',
-                'precio_maximo': 'precio_detal'
-            }
-            
-            col_imp1, col_imp2 = st.columns(2)
-            with col_imp1:
-                if st.button("📥 Descargar plantilla (formato recomendado)", use_container_width=True):
-                    plantilla = pd.DataFrame({
-                        'Código': ['123456', '789012'],
-                        'Nombre': ['MARTILLO', 'PINTURA BLANCA'],
-                        'Departamento': ['Herramientas', 'Pinturas'],
-                        'Unidad': ['unidad', 'litro'],
-                        'Costo Calculado': [5.0, 8.0],
-                        'Existencia': [10, 5.5],
-                        'Precio Máximo': [15.0, 20.0]
-                    })
-                    href = exportar_excel(plantilla, "plantilla_importacion_cristal")
-                    st.markdown(href, unsafe_allow_html=True)
-            
-            uploaded_file = st.file_uploader("Selecciona el archivo Excel de Cristal Plus (.xlsx)", type=['xlsx'])
-            if uploaded_file is not None:
-                try:
-                    df_import_raw = pd.read_excel(uploaded_file)
-                    # Mostrar columnas detectadas (útil para depuración)
-                    with st.expander("🔍 Ver columnas detectadas en el archivo", expanded=False):
-                        st.write("Columnas originales:", list(df_import_raw.columns))
-                    
-                    # Normalizar nombres de columnas del archivo
-                    columnas_norm = {col: normalizar_columna(col) for col in df_import_raw.columns}
-                    # Crear diccionario inverso para renombrar
-                    rename_dict = {}
-                    for col, norm in columnas_norm.items():
-                        if norm in mapeo_columnas:
-                            rename_dict[col] = mapeo_columnas[norm]
-                    
-                    if not rename_dict:
-                        st.error("No se pudo identificar ninguna columna requerida. Asegúrate de que el archivo tenga al menos 'Código', 'Nombre' y 'Precio Máximo' (o variantes).")
-                        st.stop()
-                    
-                    # Renombrar columnas
-                    df_import = df_import_raw.rename(columns=rename_dict)
-                    
-                    # Verificar columnas obligatorias
-                    obligatorias = ['nombre', 'precio_detal']
-                    faltan = [col for col in obligatorias if col not in df_import.columns]
-                    if faltan:
-                        st.error(f"No se encontraron las columnas obligatorias: {faltan}. Las columnas detectadas son: {list(df_import.columns)}")
-                        st.stop()
-                    
-                    # Asignar valores por defecto para columnas opcionales
-                    df_import['categoria'] = df_import.get('categoria', 'Otros').fillna('Otros')
-                    df_import['unidad_medida'] = df_import.get('unidad_medida', 'unidad').fillna('unidad')
-                    df_import['unidad_medida'] = df_import['unidad_medida'].apply(lambda x: x if x in UNIDADES else 'unidad')
-                    df_import['costo'] = pd.to_numeric(df_import.get('costo', 0), errors='coerce').fillna(0)
-                    df_import['stock'] = pd.to_numeric(df_import.get('stock', 0), errors='coerce').fillna(0)
-                    df_import['precio_detal'] = pd.to_numeric(df_import['precio_detal'], errors='coerce')
-                    df_import['precio_mayor'] = df_import['precio_detal']  # por defecto igual
-                    df_import['min_mayor'] = 6
-                    df_import['marca'] = ''
-                    df_import['proveedor'] = ''
-                    df_import['codigo_barras'] = df_import.get('codigo_barras', '').fillna('').astype(str)
-                    
-                    # Limpiar y validar
-                    df_import = df_import.dropna(subset=['nombre', 'precio_detal'])
-                    df_import = df_import[df_import['precio_detal'] > 0]
-                    df_import['nombre'] = df_import['nombre'].astype(str).str.upper().str.strip()
-                    
-                    if df_import.empty:
-                        st.error("No hay datos válidos para importar. Asegúrate de que cada fila tenga 'Nombre' y 'Precio Máximo' > 0.")
-                    else:
-                        st.success(f"✅ Se encontraron {len(df_import)} productos listos para importar/actualizar.")
-                        st.dataframe(df_import[['nombre', 'categoria', 'unidad_medida', 'precio_detal', 'stock']], use_container_width=True)
-                        
-                        if st.button("🚀 Confirmar importación", use_container_width=True):
-                            insertados = 0
-                            actualizados = 0
-                            errores = []
-                            for idx, row in df_import.iterrows():
-                                try:
-                                    nombre = row['nombre']
-                                    codigo = row['codigo_barras'] if row['codigo_barras'] else None
-                                    # Buscar existente por código o nombre
-                                    existe = None
-                                    if codigo and codigo != '':
-                                        existe = db.table("inventario").select("id").eq("codigo_barras", codigo).execute().data
-                                    if not existe:
-                                        existe = db.table("inventario").select("id").eq("nombre", nombre).execute().data
-                                    
-                                    datos = {
-                                        "nombre": nombre,
-                                        "categoria": row['categoria'],
-                                        "unidad_medida": row['unidad_medida'],
-                                        "marca": row['marca'],
-                                        "proveedor": row['proveedor'],
-                                        "stock": float(row['stock']),
-                                        "costo": float(row['costo']),
-                                        "precio_detal": float(row['precio_detal']),
-                                        "precio_mayor": float(row['precio_mayor']),
-                                        "min_mayor": int(row['min_mayor']),
-                                        "codigo_barras": codigo if codigo else ''
-                                    }
-                                    if existe:
-                                        db.table("inventario").update(datos).eq("id", existe[0]['id']).execute()
-                                        actualizados += 1
-                                    else:
-                                        db.table("inventario").insert(datos).execute()
-                                        insertados += 1
-                                except Exception as e:
-                                    errores.append(f"Fila {idx+2} ({nombre}): {str(e)[:100]}")
-                            if errores:
-                                st.error(f"Se produjeron errores en {len(errores)} filas. Los primeros: {errores[:3]}")
-                            st.success(f"✅ Importación completada: {insertados} productos nuevos, {actualizados} actualizados.")
-                            time.sleep(2)
-                            st.rerun()
-                except Exception as e:
-                    st.error(f"Error al leer el archivo: {e}")
+                with col_btn2:
+                    if st.form_submit_button("❌ Cancelar", use_container_width=True):
+                        del st.session_state['producto_edit_id']
+                        st.rerun()
     
-    except Exception as e:
-        st.error(f"Error en inventario: {e}")
-        st.exception(e)
+    # ============================================
+    # ELIMINAR PRODUCTO (confirmación)
+    # ============================================
+    if 'producto_eliminar_id' in st.session_state:
+        prod_id = st.session_state['producto_eliminar_id']
+        prod_nombre = df[df['id'] == prod_id].iloc[0]['nombre']
+        st.warning(f"⚠️ ¿Estás seguro de eliminar **{prod_nombre}**?")
+        col_d1, col_d2 = st.columns(2)
+        with col_d1:
+            if st.button("✅ Sí, eliminar", key="confirm_del"):
+                clave = st.text_input("Clave Admin", type="password", key="clave_del")
+                if clave == CLAVE_ADMIN:
+                    try:
+                        db.table("inventario").delete().eq("id", prod_id).execute()
+                        st.success(f"Producto '{prod_nombre}' eliminado")
+                        del st.session_state['producto_eliminar_id']
+                        time.sleep(1)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+                else:
+                    st.error("Clave incorrecta")
+        with col_d2:
+            if st.button("❌ Cancelar", key="cancel_del"):
+                del st.session_state['producto_eliminar_id']
+                st.rerun()
+    
+    # ============================================
+    # PESTAÑAS: AGREGAR PRODUCTO, ESTADÍSTICAS, RESPALDOS, IMPORTAR
+    # ============================================
+    tab2, tab3, tab4, tab5 = st.tabs(["➕ Agregar Producto", "📊 Estadísticas", "📥 Respaldos", "📤 Importar Masivo"])
+    
+    with tab2:
+        with st.form("nuevo_producto", clear_on_submit=True):
+            st.markdown("### 📝 Datos del nuevo producto (Ferretería)")
+            col_a1, col_a2 = st.columns(2)
+            with col_a1:
+                nombre = st.text_input("Nombre del producto *").upper()
+                categoria = st.selectbox("Categoría", CATEGORIAS_FERRETERIA)
+                unidad_medida = st.selectbox("Unidad de medida *", UNIDADES)
+                marca = st.text_input("Marca (opcional)")
+                proveedor = st.text_input("Proveedor (opcional)")
+                stock = st.number_input("Stock inicial *", min_value=-9999.0, step=0.1, format="%.2f")
+                costo = st.number_input("Costo $ *", min_value=0.0, step=0.01, format="%.2f")
+                codigo_barras = st.text_input("Código de barras (opcional)")
+            with col_a2:
+                precio_detal = st.number_input("Precio Detal $ *", min_value=0.0, step=0.01, format="%.2f")
+                precio_mayor = st.number_input("Precio Mayor $ *", min_value=0.0, step=0.01, format="%.2f")
+                min_mayor = st.number_input("Mínimo para Mayor (unidades) *", min_value=1, value=6, step=1)
+            if st.form_submit_button("📦 Registrar Producto", use_container_width=True):
+                if not nombre:
+                    st.error("El nombre es obligatorio")
+                elif costo < 0 or precio_detal <= 0:
+                    st.error("Costo y precio detal deben ser positivos")
+                else:
+                    try:
+                        existe = db.table("inventario").select("*").eq("nombre", nombre).execute()
+                        if existe.data:
+                            st.error(f"Ya existe un producto con el nombre '{nombre}'")
+                        else:
+                            datos_nuevos = {
+                                "nombre": nombre,
+                                "categoria": categoria,
+                                "unidad_medida": unidad_medida,
+                                "marca": marca,
+                                "proveedor": proveedor,
+                                "stock": stock,
+                                "costo": costo,
+                                "precio_detal": precio_detal,
+                                "precio_mayor": precio_mayor,
+                                "min_mayor": min_mayor,
+                                "codigo_barras": codigo_barras if codigo_barras else ''
+                            }
+                            db.table("inventario").insert(datos_nuevos).execute()
+                            st.success(f"✅ Producto '{nombre}' registrado exitosamente")
+                            time.sleep(1)
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al registrar: {e}")
+    
+    with tab3:
+        if not df.empty:
+            # Estadísticas
+            df_stats = df.copy()
+            df_stats['stock'] = pd.to_numeric(df_stats['stock'], errors='coerce').fillna(0)
+            valor_inv = (df_stats['stock'] * df_stats['costo']).sum()
+            valor_venta = (df_stats['stock'] * df_stats['precio_detal']).sum()
+            bajo_stock = len(df_stats[df_stats['stock'] < 5])
+            total_productos = len(df_stats)
+            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+            col_m1.metric("Total productos", total_productos)
+            col_m2.metric("Valor inventario (costo)", f"${valor_inv:,.2f}")
+            col_m3.metric("Valor venta potencial", f"${valor_venta:,.2f}")
+            col_m4.metric("Stock bajo", bajo_stock, delta_color="inverse")
+            ganancia_potencial = valor_venta - valor_inv
+            st.metric("💰 Ganancia potencial total", f"${ganancia_potencial:,.2f}",
+                     delta=f"{(ganancia_potencial/valor_inv*100):.1f}%" if valor_inv else "")
+            st.subheader("📊 Productos por categoría")
+            if 'categoria' in df_stats.columns:
+                cat_stats = df_stats.groupby('categoria').agg({
+                    'nombre': 'count',
+                    'stock': 'sum',
+                    'costo': lambda x: (x * df_stats.loc[x.index, 'stock']).sum()
+                }).round(2)
+                cat_stats.columns = ['Cantidad', 'Stock total', 'Valor total $']
+                st.dataframe(cat_stats, use_container_width=True)
+            st.subheader("💰 Top 10 productos por valor en inventario")
+            df_temp = df_stats.copy()
+            df_temp['valor_total'] = df_temp['stock'] * df_temp['costo']
+            df_top = df_temp.nlargest(10, 'valor_total')[['nombre', 'categoria', 'unidad_medida', 'marca', 'stock', 'costo', 'valor_total']]
+            df_top.columns = ['Producto', 'Categoría', 'Unidad', 'Marca', 'Stock', 'Costo unitario', 'Valor total']
+            st.dataframe(df_top, use_container_width=True, hide_index=True)
+            st.subheader("⚠️ Productos con stock bajo (<5) o negativo")
+            df_bajo = df_stats[df_stats['stock'] < 5][['nombre', 'categoria', 'unidad_medida', 'marca', 'stock', 'costo']]
+            if not df_bajo.empty:
+                df_bajo.columns = ['Producto', 'Categoría', 'Unidad', 'Marca', 'Stock', 'Costo unitario']
+                st.dataframe(df_bajo, use_container_width=True, hide_index=True)
+            else:
+                st.success("No hay productos con stock bajo ni negativo")
+        else:
+            st.info("No hay datos para mostrar estadísticas")
+    
+    with tab4:
+        st.subheader("📥 Respaldo de inventario")
+        st.markdown("Exporta el inventario completo o lista de precios en Excel.")
+        if not df.empty:
+            col_r1, col_r2 = st.columns(2)
+            with col_r1:
+                if st.button("📥 Exportar inventario completo", use_container_width=True):
+                    export_df = df[['nombre', 'categoria', 'unidad_medida', 'marca', 'proveedor', 'stock', 'costo', 'precio_detal', 'precio_mayor', 'min_mayor', 'codigo_barras']].copy()
+                    export_df.columns = ['Producto', 'Categoría', 'Unidad', 'Marca', 'Proveedor', 'Stock', 'Costo $', 'Precio Detal $', 'Precio Mayor $', 'Min. Mayor', 'Código Barras']
+                    href = exportar_excel(export_df, f"inventario_completo_{datetime.now().strftime('%Y%m%d_%H%M')}")
+                    st.markdown(href, unsafe_allow_html=True)
+            with col_r2:
+                if st.button("📥 Exportar lista de precios", use_container_width=True):
+                    precio_df = df[['nombre', 'categoria', 'unidad_medida', 'precio_detal', 'precio_mayor', 'min_mayor']].copy()
+                    precio_df.columns = ['Producto', 'Categoría', 'Unidad', 'Precio Detal $', 'Precio Mayor $', 'Mín. Mayor']
+                    href = exportar_excel(precio_df, f"lista_precios_{datetime.now().strftime('%Y%m%d')}")
+                    st.markdown(href, unsafe_allow_html=True)
+        else:
+            st.info("No hay productos para respaldar")
+    
+    with tab5:
+        st.subheader("📤 Importación masiva desde Cristal Plus")
+        st.markdown("""
+            **El sistema detectará automáticamente las columnas** aunque tengan tildes, mayúsculas o espacios.
+            Las columnas necesarias son: `Código`, `Nombre`, `Precio Máximo` (y opcionales: `Departamento`, `Unidad`, `Costo Calculado`, `Existencia`).
+            Puedes subir tu archivo directamente sin modificar nada.
+        """)
+        
+        def normalizar_columna(nombre):
+            import unicodedata
+            nombre = unicodedata.normalize('NFKD', nombre).encode('ASCII', 'ignore').decode('utf-8')
+            return nombre.strip().lower().replace(' ', '_')
+        
+        mapeo_columnas = {
+            'codigo': 'codigo_barras',
+            'nombre': 'nombre',
+            'departamento': 'categoria',
+            'unidad': 'unidad_medida',
+            'costo_calculado': 'costo',
+            'existencia': 'stock',
+            'precio_maximo': 'precio_detal'
+        }
+        
+        col_imp1, col_imp2 = st.columns(2)
+        with col_imp1:
+            if st.button("📥 Descargar plantilla (formato recomendado)", use_container_width=True):
+                plantilla = pd.DataFrame({
+                    'Código': ['123456', '789012'],
+                    'Nombre': ['MARTILLO', 'PINTURA BLANCA'],
+                    'Departamento': ['Herramientas', 'Pinturas'],
+                    'Unidad': ['unidad', 'litro'],
+                    'Costo Calculado': [5.0, 8.0],
+                    'Existencia': [10, 5.5],
+                    'Precio Máximo': [15.0, 20.0]
+                })
+                href = exportar_excel(plantilla, "plantilla_importacion_cristal")
+                st.markdown(href, unsafe_allow_html=True)
+        
+        uploaded_file = st.file_uploader("Selecciona el archivo Excel de Cristal Plus (.xlsx)", type=['xlsx'])
+        if uploaded_file is not None:
+            try:
+                df_import_raw = pd.read_excel(uploaded_file)
+                with st.expander("🔍 Ver columnas detectadas en el archivo", expanded=False):
+                    st.write("Columnas originales:", list(df_import_raw.columns))
+                
+                columnas_norm = {col: normalizar_columna(col) for col in df_import_raw.columns}
+                rename_dict = {}
+                for col, norm in columnas_norm.items():
+                    if norm in mapeo_columnas:
+                        rename_dict[col] = mapeo_columnas[norm]
+                
+                if not rename_dict:
+                    st.error("No se pudo identificar ninguna columna requerida.")
+                    st.stop()
+                
+                df_import = df_import_raw.rename(columns=rename_dict)
+                obligatorias = ['nombre', 'precio_detal']
+                faltan = [col for col in obligatorias if col not in df_import.columns]
+                if faltan:
+                    st.error(f"Faltan columnas: {faltan}. Detectadas: {list(df_import.columns)}")
+                    st.stop()
+                
+                df_import['categoria'] = df_import.get('categoria', 'Otros').fillna('Otros')
+                df_import['unidad_medida'] = df_import.get('unidad_medida', 'unidad').fillna('unidad')
+                df_import['unidad_medida'] = df_import['unidad_medida'].apply(lambda x: x if x in UNIDADES else 'unidad')
+                df_import['costo'] = pd.to_numeric(df_import.get('costo', 0), errors='coerce').fillna(0)
+                df_import['stock'] = pd.to_numeric(df_import.get('stock', 0), errors='coerce').fillna(0)
+                df_import['precio_detal'] = pd.to_numeric(df_import['precio_detal'], errors='coerce')
+                df_import['precio_mayor'] = df_import['precio_detal']
+                df_import['min_mayor'] = 6
+                df_import['marca'] = ''
+                df_import['proveedor'] = ''
+                df_import['codigo_barras'] = df_import.get('codigo_barras', '').fillna('').astype(str)
+                
+                df_import = df_import.dropna(subset=['nombre', 'precio_detal'])
+                df_import = df_import[df_import['precio_detal'] > 0]
+                df_import['nombre'] = df_import['nombre'].astype(str).str.upper().str.strip()
+                
+                if df_import.empty:
+                    st.error("No hay datos válidos para importar.")
+                else:
+                    st.success(f"✅ Se encontraron {len(df_import)} productos listos para importar/actualizar.")
+                    st.dataframe(df_import[['nombre', 'categoria', 'precio_detal', 'stock']], use_container_width=True)
+                    if st.button("🚀 Confirmar importación", use_container_width=True):
+                        insertados, actualizados, errores = 0, 0, []
+                        for idx, row in df_import.iterrows():
+                            try:
+                                nombre = row['nombre']
+                                codigo = row['codigo_barras'] if row['codigo_barras'] else None
+                                existe = None
+                                if codigo and codigo != '':
+                                    existe = db.table("inventario").select("id").eq("codigo_barras", codigo).execute().data
+                                if not existe:
+                                    existe = db.table("inventario").select("id").eq("nombre", nombre).execute().data
+                                
+                                datos = {k: row[k] for k in ['nombre', 'categoria', 'unidad_medida', 'marca', 'proveedor', 'stock', 'costo', 'precio_detal', 'precio_mayor', 'min_mayor', 'codigo_barras']}
+                                datos['stock'] = float(datos['stock'])
+                                datos['costo'] = float(datos['costo'])
+                                datos['precio_detal'] = float(datos['precio_detal'])
+                                datos['precio_mayor'] = float(datos['precio_mayor'])
+                                datos['min_mayor'] = int(datos['min_mayor'])
+                                
+                                if existe:
+                                    db.table("inventario").update(datos).eq("id", existe[0]['id']).execute()
+                                    actualizados += 1
+                                else:
+                                    db.table("inventario").insert(datos).execute()
+                                    insertados += 1
+                            except Exception as e:
+                                errores.append(f"Fila {idx+2}: {str(e)[:100]}")
+                        if errores:
+                            st.error(f"Errores en {len(errores)} filas. Ej: {errores[0]}")
+                        st.success(f"✅ Importación completada: {insertados} nuevos, {actualizados} actualizados.")
+                        time.sleep(2)
+                        st.rerun()
+            except Exception as e:
+                st.error(f"Error al leer archivo: {e}")
 
 # ============================================
 # MÓDULO 2: PUNTO DE VENTA (CON LIMPIEZA DE RESULTADOS AL AGREGAR)
