@@ -746,7 +746,7 @@ if opcion == "📦 INVENTARIO":
         st.exception(e)
 
 # ============================================
-# MÓDULO 2: PUNTO DE VENTA (OPCIÓN A: BUSCADOR ARRIBA, CARRITO ABAJO)
+# MÓDULO 2: PUNTO DE VENTA (TABLA CON BORDES Y SUBTOTAL EN USD+Bs)
 # ============================================
 elif opcion == "🛒 PUNTO DE VENTA":
     requiere_turno()
@@ -773,7 +773,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
     if 'cliente_actual' not in st.session_state:
         st.session_state.cliente_actual = 'cliente_1'
     
-    # Selector de cliente (dos botones en una fila)
+    # Selector de cliente
     col_sel1, col_sel2 = st.columns(2)
     with col_sel1:
         if st.button("🧑 Cliente 1", use_container_width=True, type="primary" if st.session_state.cliente_actual == 'cliente_1' else "secondary"):
@@ -787,7 +787,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
     cliente_data = st.session_state.clientes[st.session_state.cliente_actual]
     carrito = cliente_data['carrito']
     
-    # Nombre del cliente (opcional)
+    # Nombre del cliente
     nombre_cliente = st.text_input(
         "Nombre del cliente (opcional)",
         value=cliente_data.get('cliente_nombre', ''),
@@ -800,11 +800,11 @@ elif opcion == "🛒 PUNTO DE VENTA":
     st.markdown("---")
     
     # ============================================
-    # ÁREA DE BUSCADORES (pestañas a todo ancho)
+    # BUSCADORES (pestañas)
     # ============================================
     tab_codigo, tab_nombre = st.tabs(["📷 Escanear código de barras", "🔎 Buscar producto por nombre"])
     
-    # Pestaña 1: Código de barras
+    # Pestaña código de barras
     with tab_codigo:
         codigo = st.chat_input("Escanea el código de barras aquí...")
         if codigo:
@@ -848,7 +848,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
             except Exception as e:
                 st.error(f"Error: {e}")
     
-    # Pestaña 2: Búsqueda por nombre (resultados en tabla compacta)
+    # Pestaña búsqueda por nombre
     with tab_nombre:
         if 'resultados_busqueda' not in st.session_state:
             st.session_state.resultados_busqueda = []
@@ -874,14 +874,12 @@ elif opcion == "🛒 PUNTO DE VENTA":
         
         if st.session_state.resultados_busqueda:
             st.markdown("**Resultados de la búsqueda:**")
-            # Mostrar resultados en una tabla horizontal (usando columnas)
-            # Para mejor visualización, usaremos un bucle con st.columns por cada fila de resultados
             for idx, prod in enumerate(st.session_state.resultados_busqueda):
                 cols = st.columns([3, 1, 1, 1.5, 1])
                 cols[0].write(f"**{prod['nombre']}** ({prod.get('unidad_medida', 'unidad')})")
                 cols[1].write(f"${prod['precio_detal']:.2f}")
                 cols[2].write(f"Stock: {prod['stock']:.2f}")
-                cols[3].write(f"Mayoría: {prod['min_mayor']} unidades")
+                cols[3].write(f"Mayoría: {prod['min_mayor']} uds")
                 if cols[4].button("➕ Agregar", key=f"add_result_{prod['id']}_{idx}"):
                     carrito_actual = st.session_state.clientes[st.session_state.cliente_actual]['carrito']
                     cant_actual = sum(item['cantidad'] for item in carrito_actual if item['id'] == prod['id'])
@@ -916,42 +914,52 @@ elif opcion == "🛒 PUNTO DE VENTA":
     st.divider()
     
     # ============================================
-    # CARRITO DE COMPRAS (TABLA COMPACTA)
+    # CARRITO DE COMPRAS (CON BORDES Y SUBTOTAL EN USD+Bs)
     # ============================================
     st.subheader(f"🛒 Carrito de compras - {cliente_data['nombre']}")
     
     if not carrito:
         st.info("Carrito vacío. Agrega productos escaneando códigos o buscando por nombre.")
     else:
-        # Estilos para la tabla
+        # Estilos CSS para la tabla con bordes
         st.markdown("""
             <style>
-            .carrito-tabla th, .carrito-tabla td {
-                padding: 6px;
-                text-align: left;
-                border-bottom: 1px solid #ddd;
+            .tabla-carrito {
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 1rem;
             }
-            .carrito-tabla th {
+            .tabla-carrito th, .tabla-carrito td {
+                border: 1px solid #ddd;
+                padding: 8px;
+                text-align: left;
+            }
+            .tabla-carrito th {
                 background-color: #f2f2f2;
+                font-weight: bold;
+            }
+            .tabla-carrito tr:hover {
+                background-color: #f5f5f5;
             }
             </style>
         """, unsafe_allow_html=True)
         
-        # Cabeceras (usamos st.columns para simular tabla)
-        cols_head = st.columns([3, 1, 1.2, 1.2, 1.2, 1.5, 0.6], gap="small")
+        # Cabeceras de la tabla (usamos st.columns pero con estilo visual)
+        cols_head = st.columns([2.5, 1, 1.2, 1.2, 1.2, 1.2, 1.5, 0.6], gap="small")
         cols_head[0].write("**Producto**")
         cols_head[1].write("**Unidad**")
         cols_head[2].write("**Precio USD**")
         cols_head[3].write("**Precio Bs**")
         cols_head[4].write("**Cantidad**")
-        cols_head[5].write("**Subtotal**")
-        cols_head[6].write("**✖️**")
+        cols_head[5].write("**Subtotal USD**")
+        cols_head[6].write("**Subtotal Bs**")
+        cols_head[7].write("**✖️**")
         
         total_venta_usd = 0
         total_costo = 0
         
         for idx, item in enumerate(carrito):
-            cols = st.columns([3, 1, 1.2, 1.2, 1.2, 1.5, 0.6], gap="small")
+            cols = st.columns([2.5, 1, 1.2, 1.2, 1.2, 1.2, 1.5, 0.6], gap="small")
             cols[0].write(item['nombre'])
             cols[1].write(item.get('unidad', 'unidad'))
             cols[2].write(f"${item['precio']:.2f}")
@@ -986,15 +994,18 @@ elif opcion == "🛒 PUNTO DE VENTA":
                     item['subtotal'] = item['cantidad'] * item['precio']
                     st.rerun()
             
-            cols[5].write(f"${item['subtotal']:.2f}")
-            if cols[6].button("🗑️", key=f"del_{st.session_state.cliente_actual}_{idx}_{item['id']}"):
+            subtotal_usd = item['subtotal']
+            subtotal_bs = subtotal_usd * tasa
+            cols[5].write(f"${subtotal_usd:.2f}")
+            cols[6].write(f"{subtotal_bs:,.2f}")
+            if cols[7].button("🗑️", key=f"del_{st.session_state.cliente_actual}_{idx}_{item['id']}"):
                 carrito.pop(idx)
                 st.rerun()
             
-            total_venta_usd += item['subtotal']
+            total_venta_usd += subtotal_usd
             total_costo += item['cantidad'] * item['costo']
         
-        # Totales y pagos (debajo del carrito)
+        # Totales
         total_venta_bs = total_venta_usd * tasa
         st.markdown("---")
         col_total1, col_total2 = st.columns(2)
@@ -1054,7 +1065,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
             venta_valida = vuelto_usd >= -0.01 and len(carrito) > 0
             if st.button("✅ Cobrar y finalizar", type="primary", use_container_width=True, disabled=not venta_valida):
                 try:
-                    # Validar stock antes de descontar
+                    # Validar stock
                     for item in carrito:
                         stock_actual = db.table("inventario").select("stock").eq("id", item['id']).execute().data[0]['stock']
                         if item['cantidad'] > stock_actual:
@@ -1114,9 +1125,7 @@ elif opcion == "🛒 PUNTO DE VENTA":
                             <hr>
                             <table style="width:100%; border-collapse: collapse;">
                                 <thead>
-                                    <tr style="border-bottom:1px solid #ccc;">
-                                        <th>Cant</th><th>Producto</th><th>Precio</th><th>Subtotal</th>
-                                    </tr>
+                                    <tr style="border-bottom:1px solid #ccc;"><th>Cant</th><th>Producto</th><th>Precio</th><th>Subtotal</th></tr>
                                 </thead>
                                 <tbody>{items_html}</tbody>
                             </table>
