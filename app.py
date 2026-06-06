@@ -279,7 +279,7 @@ with st.sidebar:
         st.error("🔴 Caja cerrada")
 
 # ============================================
-# MÓDULO 1: INVENTARIO (VERSIÓN RÁPIDA, LIMPIA Y PROFESIONAL)
+# MÓDULO 1: INVENTARIO (VERSIÓN CON CARGA COMPLETA SIN LÍMITE)
 # ============================================
 if opcion == "📦 INVENTARIO":
     st.markdown("<h1 class='main-header'>📦 Gestión de Inventario - Ferreteria Chill</h1>", unsafe_allow_html=True)
@@ -291,10 +291,27 @@ if opcion == "📦 INVENTARIO":
     
     UNIDADES = ["unidad", "metro", "kilo", "litro", "galón", "pieza"]
     
-    # Cargar datos (con range para obtener todos los registros)
+    # ============================================
+    # CARGA COMPLETA DE DATOS (SIN LÍMITE DE 1000)
+    # ============================================
+    def cargar_todo_inventario():
+        """Obtiene todos los productos usando paginación manual (1000 por lote)"""
+        all_data = []
+        start = 0
+        batch_size = 1000
+        while True:
+            response = db.table("inventario").select("*").order("nombre").range(start, start + batch_size - 1).execute()
+            if not response.data:
+                break
+            all_data.extend(response.data)
+            if len(response.data) < batch_size:
+                break
+            start += batch_size
+        return all_data
+    
     try:
-        response = db.table("inventario").select("*").order("nombre").range(0, 10000).execute()
-        df = pd.DataFrame(response.data) if response.data else pd.DataFrame()
+        data = cargar_todo_inventario()
+        df = pd.DataFrame(data) if data else pd.DataFrame()
         
         if not df.empty:
             if 'categoria' not in df.columns:
@@ -339,7 +356,7 @@ if opcion == "📦 INVENTARIO":
             ver_bajo_stock = st.checkbox("⚠️ Solo stock bajo (<5)")
         with col_f4:
             if st.button("🧹 Limpiar filtros", use_container_width=True):
-                st.query_params.clear()
+                st.session_state.pagina_actual = 1
                 st.rerun()
         
         # Aplicar filtros
@@ -370,7 +387,7 @@ if opcion == "📦 INVENTARIO":
             if 'pagina_actual' not in st.session_state:
                 st.session_state.pagina_actual = 1
             if st.session_state.pagina_actual > total_paginas:
-                st.session_state.pagina_actual = total_paginas
+                st.session_state.pagina_actual = total_paginas if total_paginas > 0 else 1
             
             col_pag1, col_pag2, col_pag3 = st.columns([1, 2, 1])
             with col_pag1:
